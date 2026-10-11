@@ -73,6 +73,10 @@ test("the raise distinguishes the outcomes a boolean would collapse", () => {
   // the topmost band and back puts it above everything without any permission.
   assert.match(processSource, /SetWindowPos\(best, HWND_TOPMOST/);
   assert.match(processSource, /SetWindowPos\(best, HWND_NOTOPMOST/);
+  // The launcher has no console, so the helper reports the enumeration facts
+  // alongside the outcome: without them a wrong window pick is indistinguishable
+  // from a focus the OS refused, which is the whole question being asked.
+  assert.match(processSource, /string detail = "w" \+ owned\.Count/);
 });
 
 test("the focus helper does not use the input-queue attach recipe", () => {
@@ -94,6 +98,22 @@ test("only a Chromium widget counts as the TRAE window", () => {
   // window apart, and picking a helper instead would raise nothing at all.
   assert.match(processSource, /GetClassName\(handle, className, 256\)/);
   assert.match(processSource, /className\.ToString\(\) != "Chrome_WidgetWin_1"/);
+});
+
+test("the window is chosen by restored size, not by enumeration order", () => {
+  // TRAE also owns a small titled popup (62x100 was observed), and taking
+  // whichever window came first raised that one while the window the user was
+  // looking at never moved. The restored size is compared so a minimized main
+  // window still wins; GetWindowPlacement is what survives minimize/maximize.
+  assert.match(processSource, /NormalArea\(handle\)/);
+  assert.match(processSource, /GetWindowPlacement\(best, ref place\)/);
+  assert.match(processSource, /if \(area > bestArea \|\| \(area == bestArea && rank < bestRank\)\)/);
+});
+
+test("only the chosen window already being in front skips the raise", () => {
+  // Any owned window counted as "TRAE", popup included, so a small helper in
+  // front made the helper report success and raise nothing at all.
+  assert.match(processSource, /foreground == best\) \{ return "already-foreground\|" \+ detail/);
 });
 
 test("a failed probe is reported, not thrown", () => {
@@ -189,4 +209,24 @@ test("the panel opens itself so a notice has somewhere to be seen", () => {
   );
   assert.match(injectSource, /window\.addEventListener\(NOTICE_EVENT, handleNotice\)/);
   assert.match(injectSource, /window\.removeEventListener\(NOTICE_EVENT, handleNotice\)/);
+});
+
+test("the launcher records the click outcome to a persistent log", () => {
+  // The shortcut starts this process with no console, so anything written to
+  // stdout is thrown away. Without a file to read, a click that did nothing
+  // leaves no evidence at all and every follow-up attempt is a guess.
+  assert.match(launcherSource, /createDaemonLogger/);
+  assert.match(launcherSource, /LAUNCHER_LOG_PATH/);
+  const body = sliceBetween(
+    launcherSource,
+    "async function settleWindowFocus(focus, exePath, dataDirPath, token)",
+    "\nasync function main()",
+  );
+  // The outcome is written for every result, failure or not — the interesting
+  // case is the one where the window did not come forward, which is not a throw.
+  assert.match(body, /log\.info\(/);
+  assert.match(body, /focus\.action/);
+  assert.match(body, /focus\.detail/);
+  // Nothing may go back to a console that the hidden launcher cannot keep.
+  assert.doesNotMatch(launcherSource, /console\.(log|warn|error)/);
 });
