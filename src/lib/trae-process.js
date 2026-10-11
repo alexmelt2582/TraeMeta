@@ -322,6 +322,39 @@ public class TraeWindowFocus {
   [DllImport("user32.dll")] public static extern int GetWindowTextLength(IntPtr handle);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr handle, System.Text.StringBuilder name, int maxCount);
   [DllImport("user32.dll")] public static extern void SwitchToThisWindow(IntPtr handle, bool altTab);
+  [DllImport("user32.dll")] public static extern bool GetWindowPlacement(IntPtr handle, ref WINDOWPLACEMENT placement);
+
+  [StructLayout(LayoutKind.Sequential)]
+  public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+
+  [StructLayout(LayoutKind.Sequential)]
+  public struct POINT { public int X; public int Y; }
+
+  [StructLayout(LayoutKind.Sequential)]
+  public struct WINDOWPLACEMENT {
+    public int length;
+    public int flags;
+    public int showCmd;
+    public POINT ptMinPosition;
+    public POINT ptMaxPosition;
+    public RECT rcNormalPosition;
+  }
+
+  /**
+   * The window's restored size, which stays the same whether it is minimized,
+   * maximized or shown normally. GetWindowRect reports a stub for a minimized
+   * window, and ranking by that stub is how a 62x100 helper popup outranked the
+   * real window and got raised instead of it.
+   */
+  static long NormalArea(IntPtr handle) {
+    WINDOWPLACEMENT placement = new WINDOWPLACEMENT();
+    placement.length = Marshal.SizeOf(typeof(WINDOWPLACEMENT));
+    if (!GetWindowPlacement(handle, ref placement)) { return 0; }
+    long width = placement.rcNormalPosition.Right - placement.rcNormalPosition.Left;
+    long height = placement.rcNormalPosition.Bottom - placement.rcNormalPosition.Top;
+    if (width <= 0 || height <= 0) { return 0; }
+    return width * height;
+  }
 
   static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
   static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2);
@@ -333,6 +366,7 @@ public class TraeWindowFocus {
     List<IntPtr> owned = new List<IntPtr>();
     IntPtr best = IntPtr.Zero;
     int bestRank = 99;
+    long bestArea = -1;
     TraeWindowFocus.EnumProc callback = delegate(IntPtr handle, IntPtr parameter) {
       uint owner = 0;
       GetWindowThreadProcessId(handle, out owner);
@@ -350,14 +384,39 @@ public class TraeWindowFocus {
       owned.Add(handle);
       int rank = 2;
       if (IsWindowVisible(handle)) { rank = IsIconic(handle) ? 1 : 0; }
-      if (rank < bestRank) { bestRank = rank; best = handle; }
+      // Size, not z-order, is what tells the real window apart: TRAE also owns a
+      // small titled popup, and taking whichever came first raised that 62x100
+      // helper while the window the user was looking at never moved. The restored
+      // size is what is compared, so a minimized main window still beats it.
+      long area = NormalArea(handle);
+      if (area > bestArea || (area == bestArea && rank < bestRank)) {
+        bestArea = area; bestRank = rank; best = handle;
+      }
       return true;
     };
     EnumWindows(callback, IntPtr.Zero);
 
     if (owned.Count == 0) { return "no-window"; }
     IntPtr foreground = GetForegroundWindow();
-    if (foreground != IntPtr.Zero && owned.Contains(foreground)) { return "already-foreground"; }
+
+    // The enumeration facts travel with every outcome, because the launcher has no
+    // console to report from: w is how many candidate windows TRAE owned, r the
+    // rank of the one chosen (0 = visible and not minimized), fg whether any window
+    // held the foreground at all, and sz its restored size — a small size means a
+    // helper popup was picked instead of the real window, which looks exactly like
+    // nothing happening.
+    WINDOWPLACEMENT place = new WINDOWPLACEMENT();
+    place.length = Marshal.SizeOf(typeof(WINDOWPLACEMENT));
+    GetWindowPlacement(best, ref place);
+    int bestWidth = place.rcNormalPosition.Right - place.rcNormalPosition.Left;
+    int bestHeight = place.rcNormalPosition.Bottom - place.rcNormalPosition.Top;
+    string detail = "w" + owned.Count + "|r" + bestRank + "|fg" + (foreground != IntPtr.Zero ? "1" : "0")
+      + "|sz" + bestWidth + "x" + bestHeight;
+
+    // Only the chosen window already being in front means there is nothing to do.
+    // Any owned window counts as "TRAE" here, popup included, so treating one of
+    // those as done left the real window behind while a 62x100 helper sat in front.
+    if (foreground != IntPtr.Zero && foreground == best) { return "already-foreground|" + detail; }
 
     string action;
     if (IsIconic(best)) { ShowWindow(best, 9); action = "restored"; }
@@ -385,17 +444,23 @@ public class TraeWindowFocus {
     SetForegroundWindow(best);
     if (GetForegroundWindow() != best) SwitchToThisWindow(best, true);
 
-    return GetForegroundWindow() == best ? action : action + "-unfocused";
+    return (GetForegroundWindow() == best ? action : action + "-unfocused") + "|" + detail;
   }
 }
 '@
     [TraeWindowFocus]::Focus($pids)
   `;
   try {
-    const action = await runPowerShell(script, { timeout: 25000 });
-    return { action: action || "unavailable", error: null };
+    const raw = (await runPowerShell(script, { timeout: 25000 })) || "";
+    const separator = raw.indexOf("|");
+    const action = separator >= 0 ? raw.slice(0, separator) : raw;
+    return {
+      action: action || "unavailable",
+      detail: separator >= 0 ? raw.slice(separator + 1) : "",
+      error: null,
+    };
   } catch (error) {
-    return { action: "unavailable", error: error?.message || String(error) };
+    return { action: "unavailable", detail: "", error: error?.message || String(error) };
   }
 }
 

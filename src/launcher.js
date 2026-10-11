@@ -27,7 +27,17 @@ import {
 } from "./lib/trae-process.js";
 import { readTextFile } from "./lib/json-file.js";
 import { stripProxyEnv } from "./lib/net-diagnostics.js";
+import { createDaemonLogger } from "./lib/daemon-log.js";
+import { LAUNCHER_LOG_PATH } from "./lib/runtime-paths.js";
 import { setTimeout as delay } from "node:timers/promises";
+
+/**
+ * The shortcut runs this process with no console, so everything written to
+ * stdout is discarded and a click that failed leaves no evidence behind. Every
+ * line is therefore also appended to `logs/launcher.log`, which is the only
+ * place the window-focus outcome can be read back after a real click.
+ */
+const log = createDaemonLogger({ logPath: LAUNCHER_LOG_PATH });
 
 function argumentValue(name) {
   const index = process.argv.indexOf(name);
@@ -113,7 +123,7 @@ async function notifyPanel(dataDirPath, token, message) {
       body: JSON.stringify({ message }),
     });
   } catch (error) {
-    console.warn(`[${APP_NAME}] the notice could not be delivered: ${error?.message || error}`);
+    log.warn(`[${APP_NAME}] the notice could not be delivered: ${error?.message || error}`);
   }
 }
 
@@ -132,8 +142,16 @@ async function notifyPanel(dataDirPath, token, message) {
  * one would make the shortcut look broken in a way it is not.
  */
 async function settleWindowFocus(focus, exePath, dataDirPath, token) {
+  // Recorded for every outcome, not only the failures: a click that did nothing
+  // visible has to leave behind what the helper actually found, or the next
+  // attempt is a guess again.
+  log.info(
+    `[${APP_NAME}] window focus: ${focus.action}` +
+      `${focus.detail ? ` [${focus.detail}]` : ""}` +
+      `${focus.error ? ` (${focus.error})` : ""}`,
+  );
+
   if (focus.action !== "no-window" && focus.action !== "unavailable") {
-    console.log(`[${APP_NAME}] window focus: ${focus.action}`);
     return;
   }
 
@@ -142,7 +160,7 @@ async function settleWindowFocus(focus, exePath, dataDirPath, token) {
     // restore. Asking the running instance for a new window is the only way to
     // put something on screen, and the single-instance lock keeps this from
     // starting a second TRAE.
-    console.log(`[${APP_NAME}] TRAE owns no window; asking the running instance for one...`);
+    log.info(`[${APP_NAME}] TRAE owns no window; asking the running instance for one...`);
     await startTraeWithCdp(exePath, cdpPort);
     // The request only asks Chromium to create the window; it still has to be
     // created and shown. Sampling once at a fixed delay made a slow start look
@@ -154,11 +172,11 @@ async function settleWindowFocus(focus, exePath, dataDirPath, token) {
       await delay(700);
       const retry = await focusTraeWindow(exePath);
       if (retry.action !== "no-window" && retry.action !== "unavailable") {
-        console.log(`[${APP_NAME}] window focus retry: ${retry.action}`);
+        log.info(`[${APP_NAME}] window focus retry: ${retry.action}`);
         return;
       }
     }
-    console.log(`[${APP_NAME}] window focus retry: still no window`);
+    log.info(`[${APP_NAME}] window focus retry: still no window`);
   }
 
   await notifyPanel(
@@ -178,7 +196,7 @@ async function main() {
     throw new Error(formatNotFoundHelp({ attempts: resolved.attempts, dataDir }));
   }
   exePath = resolved.path;
-  console.log(
+  log.info(
     `[${APP_NAME}] TRAE: ${exePath} (来源: ${SOURCES[resolved.source] ?? resolved.source})`,
   );
 
@@ -186,6 +204,10 @@ async function main() {
   // start puts a window on screen by itself, so only the already-running case has
   // to be brought forward explicitly.
   const alreadyRunning = await isTraeCdpAvailable(cdpPort);
+  // Whether the click is treated as "bring the existing window forward" or as a
+  // cold start, and the answer to that decides the whole branch below; it is the
+  // first thing to check when a click seems to do nothing.
+  log.info(`[${APP_NAME}] TRAE already running with CDP: ${alreadyRunning}`);
   // Started before the daemon and the injection are waited on so its PowerShell
   // round trip runs alongside them; the result is consumed only after injection,
   // when the panel can still be told about a failure. A cold start or a restart
@@ -206,7 +228,7 @@ async function main() {
   // daemon's own startup from the critical path rather than adding to it.
   let daemonStart = null;
   if (!cdpReady) {
-    console.log(`[${APP_NAME}] Restarting Trae CN with CDP port ${cdpPort}...`);
+    log.info(`[${APP_NAME}] Restarting Trae CN with CDP port ${cdpPort}...`);
     await stopTraeForRestart(exePath);
     await startTraeWithCdp(exePath, cdpPort);
     daemonStart = startDaemon();
@@ -239,9 +261,9 @@ async function main() {
 
   if (focusPromise) await settleWindowFocus(await focusPromise, exePath, dataDir, token);
 
-  console.log(`[${APP_NAME}] Ready: http://${LOOPBACK_HOST}:${uiPort}`);
-  console.log(`[${APP_NAME}] CDP: http://${LOOPBACK_HOST}:${cdpPort}`);
-  console.log(`[${APP_NAME}] Accounts: ${health.accountCount || 0}`);
+  log.info(`[${APP_NAME}] Ready: http://${LOOPBACK_HOST}:${uiPort}`);
+  log.info(`[${APP_NAME}] CDP: http://${LOOPBACK_HOST}:${cdpPort}`);
+  log.info(`[${APP_NAME}] Accounts: ${health.accountCount || 0}`);
 }
 
 async function getToken(dataDirPath) {
@@ -250,6 +272,9 @@ async function getToken(dataDirPath) {
 }
 
 main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
+  // The failure that ends a click is exactly the one nobody can see: no console,
+  // no panel, nothing. `log.error` mirrors to stderr and appends the message (or
+  // the stack, when there is one) to logs/launcher.log.
+  log.error(`[${APP_NAME}] launch failed:`, error instanceof Error ? error : String(error));
   process.exitCode = 1;
 });
