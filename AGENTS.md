@@ -318,22 +318,6 @@ TRAE 自身文件它唯一允许写入的是用户级 `User/settings.json`，
 - 升级与签到、续签、切换、登录共用同一把互斥锁（`isInstallBusy()` 与既有各标志
   互相判断）：升级结束时守护进程会停止，绝不允许它截断一个进行中的账号操作。
 
-## 本地 Codex 运行时
-
-- 在这个 Windows 工作区，内置的 `apply_patch` 工具和某些沙箱化 shell 启动可能
-  在运行命令前就报 `fs sandbox helper failed ... setup refresh had errors`。把这种
-  情况当作本地 Codex 执行环境的失败，而不是关于仓库或被测代码的证据。
-- 本仓库使用标准的 `.git` 目录。如果 `.git` 看起来不像常规目录，先确认是不是
-  磁盘或权限问题，不要把它当作可重建的临时文件处理。
-- 当沙箱化进程启动这样被拒时，用升级权限重试完全相同的命令。应优先运行仍然
-  可用的只读命令：`rg`、`git log`、`git diff --stat` 和 `git diff --check`。
-- 如果内置的 `apply_patch` 工具始终不可用，就在升级权限下直接用 Codex 可执行文件的
-  `--codex-run-as-apply-patch` 模式，携带相同的 `*** Begin Patch ... *** End Patch`
-  载荷。`apply_patch.bat` 包装器可能会丢失多行参数，因此直接调用后端的
-  `codex.exe`。不要用 `Set-Content`、shell 重定向或临时文件改写来替代源码编辑。
-- 通过该后备方式编辑后，用 `git diff --check`、`npm test` 和 `npm run check`
-  验证改动；当沙箱化的状态命令仍被拒绝时，用升级权限执行 `git status --short --branch`。
-
 ## 工作流
 
 - 每个提交必须代表一个完整的、用户确认的功能。
