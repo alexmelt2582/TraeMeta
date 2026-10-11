@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { createDaemonLogger, redactLogLine } from "../src/lib/daemon-log.js";
+import { createDaemonLogger, formatLogTimestamp, redactLogLine } from "../src/lib/daemon-log.js";
 
 test("jwt shaped tokens are removed", () => {
   const line = "auth=Cloud-IDE-JWT eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abcdefghij";
@@ -57,6 +57,18 @@ test("non string input never becomes the literal text null or undefined", () => 
   assert.equal(redactLogLine(null), "");
   assert.equal(redactLogLine(undefined), "");
   assert.equal(redactLogLine(42), "42");
+});
+
+test("log timestamps are written in Beijing time with an explicit offset", () => {
+  // `toISOString()` writes UTC, which reads eight hours behind the clock on the
+  // user's wall: an event that happened at 12:34 was stamped 04:34, on the one
+  // screen this project has for diagnosis.
+  assert.equal(
+    formatLogTimestamp(new Date("2026-10-11T04:34:56.789Z")),
+    "2026-10-11T12:34:56.789+08:00",
+  );
+  // The offset has to stay visible so the value is never ambiguous.
+  assert.match(formatLogTimestamp(), /\+08:00$/);
 });
 
 test("the logger writes redacted lines and creates its directory", async () => {

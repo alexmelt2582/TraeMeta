@@ -33,6 +33,21 @@ export function redactLogLine(value) {
     .replace(LONG_HEX, "<redacted-hex>");
 }
 
+/**
+ * Formats a log timestamp as Beijing wall-clock time with an explicit offset.
+ *
+ * `toISOString()` writes UTC, which reads eight hours behind the clock on the
+ * user's wall: a line stamped 04:34 for an event that happened at 12:34 is wrong
+ * on the one screen this project has for diagnosis. China has observed a fixed
+ * UTC+8 offset since 1991, and the project already fixes `Asia/Shanghai` as its
+ * calendar timezone, so a constant offset is exact here rather than an
+ * approximation. The offset is kept visible so the value stays unambiguous.
+ */
+export function formatLogTimestamp(date = new Date()) {
+  const shifted = new Date(date.getTime() + 8 * 60 * 60 * 1000);
+  return `${shifted.toISOString().slice(0, -1)}+08:00`;
+}
+
 function formatArgument(value) {
   if (value instanceof Error) return value.stack || value.message;
   if (typeof value === "string") return value;
@@ -55,7 +70,7 @@ function rotateIfNeeded(logPath, maxBytes, maxBackups) {
     return;
   }
   if (!shouldRotateLog(size, maxBytes)) return;
-  const stamp = new Date().toISOString().replaceAll(":", "-").slice(0, 19);
+  const stamp = formatLogTimestamp().replaceAll(":", "-").slice(0, 19);
   try {
     fs.renameSync(logPath, rotatedLogPath(logPath, stamp));
   } catch {
@@ -107,7 +122,7 @@ export function createDaemonLogger({
     try {
       fs.mkdirSync(path.dirname(logPath), { recursive: true });
       rotateIfNeeded(logPath, maxBytes, maxBackups);
-      fs.appendFileSync(logPath, `[${new Date().toISOString()}] [${level}] ${text}\n`, "utf8");
+      fs.appendFileSync(logPath, `[${formatLogTimestamp()}] [${level}] ${text}\n`, "utf8");
     } catch {
       // Logging failure is never fatal.
     }

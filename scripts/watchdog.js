@@ -16,6 +16,7 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { daemonSpec } from "../src/lib/launch-spec.js";
+import { formatLogTimestamp } from "../src/lib/daemon-log.js";
 import { stripProxyEnv } from "../src/lib/net-diagnostics.js";
 import {
   DATA_DIR,
@@ -52,7 +53,7 @@ function say(message) {
 }
 
 async function appendLog(message) {
-  const line = `[${new Date().toISOString()}] ${message}\n`;
+  const line = `[${formatLogTimestamp()}] ${message}\n`;
   try {
     await fs.mkdir(LOG_DIR, { recursive: true });
     try {
@@ -69,7 +70,7 @@ async function appendLog(message) {
 }
 
 async function rotateLog() {
-  const stamp = new Date().toISOString().replaceAll(":", "-").slice(0, 19);
+  const stamp = formatLogTimestamp().replaceAll(":", "-").slice(0, 19);
   await fs.rename(LOG_PATH, rotatedLogPath(LOG_PATH, stamp)).catch(() => {});
   const base = `${path.basename(LOG_PATH)}.`;
   const entries = await fs.readdir(LOG_DIR).catch(() => []);
