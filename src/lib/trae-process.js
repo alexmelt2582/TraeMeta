@@ -318,12 +318,16 @@ public class TraeWindowFocus {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr handle);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr handle);
+  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr handle, IntPtr after, int x, int y, int width, int height, uint flags);
   [DllImport("user32.dll")] public static extern int GetWindowTextLength(IntPtr handle);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr handle, System.Text.StringBuilder name, int maxCount);
-  // kernel32, not user32: declaring it against user32 throws at the call, which
-  // used to happen after the window had already been restored.
-  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
-  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool attach);
+  [DllImport("user32.dll")] public static extern void SwitchToThisWindow(IntPtr handle, bool altTab);
+
+  static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+  static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2);
+  const uint SWP_NOSIZE = 0x0001;
+  const uint SWP_NOMOVE = 0x0002;
+  const uint SWP_NOACTIVATE = 0x0010;
 
   public static string Focus(uint[] processIds) {
     List<IntPtr> owned = new List<IntPtr>();
@@ -361,17 +365,25 @@ public class TraeWindowFocus {
     else { action = "focused"; }
 
     BringWindowToTop(best);
-    // SetForegroundWindow is refused unless the caller is allowed to take focus,
-    // and a process launched from a shortcut is not. Sharing an input queue with
-    // the thread that currently owns the foreground is the documented way around
-    // that, and it is what makes the window actually come forward.
-    uint foregroundThread = 0;
-    if (foreground != IntPtr.Zero) { GetWindowThreadProcessId(foreground, out foregroundThread); }
-    uint currentThread = GetCurrentThreadId();
-    bool attached = foregroundThread != 0 && foregroundThread != currentThread
-      && AttachThreadInput(currentThread, foregroundThread, true);
-    try { SetForegroundWindow(best); }
-    finally { if (attached) { AttachThreadInput(currentThread, foregroundThread, false); } }
+    // Focus is one guarantee; z-order is a weaker one that needs no permission at
+    // all. Toggling the window through the topmost band and back raises it above
+    // every other window even for a caller that is refused the foreground, so the
+    // panel becomes visible either way — which is what the click is asking for.
+    SetWindowPos(best, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    SetWindowPos(best, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    // SetForegroundWindow is refused unless the caller is allowed to take the
+    // foreground, and a helper started from a shortcut is not: the call returns
+    // having changed nothing, which is how a click on the shortcut came to do
+    // nothing visible at all. SwitchToThisWindow performs the same switch for a
+    // caller that is not permitted, so it runs only as the fallback — it also
+    // rewrites the Alt+Tab order, which a plain focus leaves alone.
+    //
+    // The older input-queue attach recipe this replaced is deliberately gone:
+    // Microsoft documents that approach as unreliable for this exact job, and it
+    // was observed to fail with the input queue attached where the plain call
+    // succeeded.
+    SetForegroundWindow(best);
+    if (GetForegroundWindow() != best) SwitchToThisWindow(best, true);
 
     return GetForegroundWindow() == best ? action : action + "-unfocused";
   }

@@ -124,12 +124,14 @@ async function notifyPanel(dataDirPath, token, message) {
  * already injected, and the launcher exited without touching a window. Restoring
  * the window is the whole point of the click, so it happens here.
  *
- * It runs *after* injection so that a failure has a panel to report into. Nothing
- * here throws — a window that could not be raised is not a failed launch, and
- * reporting it as one would make the shortcut look broken in a way it is not.
+ * The probe compiles a C# helper before it can enumerate windows, which costs
+ * over a second by itself, so it is started here and only acted on once the panel
+ * exists to report a failure into: the wait overlaps the daemon start and the
+ * injection instead of being added to the end of the launch. Nothing here throws
+ * — a window that could not be raised is not a failed launch, and reporting it as
+ * one would make the shortcut look broken in a way it is not.
  */
-async function focusExistingWindow(exePath, dataDirPath, token) {
-  const focus = await focusTraeWindow(exePath);
+async function settleWindowFocus(focus, exePath, dataDirPath, token) {
   if (focus.action !== "no-window" && focus.action !== "unavailable") {
     console.log(`[${APP_NAME}] window focus: ${focus.action}`);
     return;
@@ -184,6 +186,11 @@ async function main() {
   // start puts a window on screen by itself, so only the already-running case has
   // to be brought forward explicitly.
   const alreadyRunning = await isTraeCdpAvailable(cdpPort);
+  // Started before the daemon and the injection are waited on so its PowerShell
+  // round trip runs alongside them; the result is consumed only after injection,
+  // when the panel can still be told about a failure. A cold start or a restart
+  // puts a window on screen by itself and has nothing to bring forward.
+  const focusPromise = alreadyRunning ? focusTraeWindow(exePath) : null;
   let cdpReady = alreadyRunning;
   if (!cdpReady && noRestart) {
     throw new Error(
@@ -191,17 +198,25 @@ async function main() {
     );
   }
 
+  // The daemon only serves the loopback API and connects to CDP once it is up, so
+  // its startup does not depend on TRAE being reachable yet. On a cold start it is
+  // therefore started alongside the TRAE launch and its result collected after,
+  // instead of starting only once CDP is already listening. The two waits are
+  // independent and the TRAE launch is the longer of them, so this removes the
+  // daemon's own startup from the critical path rather than adding to it.
+  let daemonStart = null;
   if (!cdpReady) {
     console.log(`[${APP_NAME}] Restarting Trae CN with CDP port ${cdpPort}...`);
     await stopTraeForRestart(exePath);
     await startTraeWithCdp(exePath, cdpPort);
+    daemonStart = startDaemon();
     cdpReady = await waitForCdp(cdpPort);
     if (!cdpReady) {
       throw new Error(`Timed out waiting for Trae CN CDP port ${cdpPort}`);
     }
   }
 
-  const health = await startDaemon();
+  const health = daemonStart ? await daemonStart : await startDaemon();
   const token = await getToken(dataDir);
   let lastInjectStatus = 0;
   const injectDeadline = Date.now() + 12000;
@@ -222,7 +237,7 @@ async function main() {
     throw new Error(`Failed to inject the enhancer UI: HTTP ${lastInjectStatus}`);
   }
 
-  if (alreadyRunning) await focusExistingWindow(exePath, dataDir, token);
+  if (focusPromise) await settleWindowFocus(await focusPromise, exePath, dataDir, token);
 
   console.log(`[${APP_NAME}] Ready: http://${LOOPBACK_HOST}:${uiPort}`);
   console.log(`[${APP_NAME}] CDP: http://${LOOPBACK_HOST}:${cdpPort}`);
