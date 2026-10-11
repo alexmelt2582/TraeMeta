@@ -17,9 +17,9 @@ import {
 } from "../src/lib/app-installer.js";
 import { downloadToFile } from "../src/lib/http.js";
 
-const INSTALLER_NAME = "TraeEnhancer-Setup-1.4.0.exe";
+const INSTALLER_NAME = "TraeMeta-Setup-1.4.0.exe";
 const INSTALLER_URL =
-  "https://github.com/alexmelt2582/traedabby/releases/download/v1.4.0/TraeEnhancer-Setup-1.4.0.exe";
+  "https://github.com/alexmelt2582/TraeMeta/releases/download/v1.4.0/TraeMeta-Setup-1.4.0.exe";
 
 function sha256(buffer) {
   return createHash("sha256").update(buffer).digest("hex");
@@ -295,7 +295,7 @@ test("a download whose sha256 disagrees with the release is deleted", async () =
 
 test("the installer is started detached, and with no switches at all", () => {
   const calls = [];
-  const installerPath = "C:\\Temp\\TraeEnhancer-Update\\setup.exe";
+  const installerPath = "C:\\Temp\\TraeMeta-Update\\setup.exe";
 
   const child = launchInstaller(installerPath, {
     spawnImpl: (command, args, options) => {

@@ -9,7 +9,7 @@ import {
 
 const context = {
   pluginVersion: "2.3.83557",
-  clientId: "en1oxy7wnw8j9n",
+  clientId: "ono9krqynydwx5",
   machineId: "machine-id",
   deviceId: "1360520616887347",
   deviceBrand: "Windows",
@@ -20,7 +20,7 @@ const context = {
   appType: "stable",
 };
 
-test("verification URI matches TRAE SOLO CN authorization parameters", () => {
+test("verification URI matches Trae CN authorization parameters", () => {
   const uri = new URL(
     buildVerificationUri(
       context,
@@ -32,8 +32,8 @@ test("verification URI matches TRAE SOLO CN authorization parameters", () => {
   );
   assert.equal(uri.origin, "https://www.trae.cn");
   assert.equal(uri.pathname, "/authorization");
-  assert.equal(uri.searchParams.get("auth_from"), "solo");
-  assert.equal(uri.searchParams.get("client_id"), "en1oxy7wnw8j9n");
+  assert.equal(uri.searchParams.get("auth_from"), "trae");
+  assert.equal(uri.searchParams.get("client_id"), "ono9krqynydwx5");
   assert.equal(uri.searchParams.get("redirect"), "0");
   assert.equal(uri.searchParams.get("auth_callback_url"), "http://127.0.0.1:4567/authorize");
   assert.equal(uri.searchParams.get("code_challenge_method"), "S256");

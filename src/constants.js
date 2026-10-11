@@ -2,8 +2,8 @@ import path from "node:path";
 
 import { APP_ROOT } from "./lib/app-paths.js";
 
-export const APP_NAME = "TRAE SOLO CN Enhancer";
-export const APP_VERSION = "1.4.0";
+export const APP_NAME = "Trae Meta";
+export const APP_VERSION = "2.0.0";
 export const PROJECT_ROOT = APP_ROOT;
 
 /**
@@ -13,26 +13,26 @@ export const PROJECT_ROOT = APP_ROOT;
  * the shipped build is a Node single-executable application with no repository
  * next to it and no git metadata to consult at run time.
  */
-export const GITHUB_REPO = "alexmelt2582/traedabby";
+export const GITHUB_REPO = "alexmelt2582/TraeMeta";
 
-export const DEFAULT_CDP_PORT = 9334;
-export const DEFAULT_UI_PORT = 47834;
+export const DEFAULT_CDP_PORT = 9337;
+export const DEFAULT_UI_PORT = 47837;
 export const LOOPBACK_HOST = "127.0.0.1";
 
 export const DEFAULT_TRAE_EXE =
-  process.env.TRAE_ENHANCER_TRAE_EXE ||
+  process.env.TRAEMETA_ENHANCER_TRAE_EXE ||
   path.join(
     process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || "", "AppData", "Local"),
     "Programs",
-    "TRAE SOLO CN",
-    "TRAE SOLO CN.exe",
+    "Trae CN",
+    "Trae CN.exe",
   );
 
 export const DEFAULT_TRAE_USER_DATA_DIR =
-  process.env.TRAE_ENHANCER_USER_DATA_DIR ||
+  process.env.TRAEMETA_ENHANCER_USER_DATA_DIR ||
   path.join(
     process.env.APPDATA || path.join(process.env.USERPROFILE || "", "AppData", "Roaming"),
-    "TRAE SOLO CN",
+    "Trae CN",
   );
 
 export const DEFAULT_STORAGE_PATH = path.join(
@@ -43,7 +43,7 @@ export const DEFAULT_STORAGE_PATH = path.join(
 );
 
 export const DEFAULT_DATA_DIR =
-  process.env.TRAE_ENHANCER_DATA_DIR || path.join(PROJECT_ROOT, "data");
+  process.env.TRAEMETA_ENHANCER_DATA_DIR || path.join(PROJECT_ROOT, "data");
 
 export function parsePort(value, fallback) {
   const parsed = Number.parseInt(String(value ?? ""), 10);

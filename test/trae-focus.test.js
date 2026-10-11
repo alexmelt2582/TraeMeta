@@ -151,7 +151,7 @@ test("only a real failure reaches the user, and only through the panel", () => {
 test("the notice is delivered over the loopback API with the panel token", () => {
   const body = bodyOf(launcherSource, "async function notifyPanel\\(dataDirPath, token, message\\)");
   assert.match(body, /\/api\/notice/);
-  assert.match(body, /x-trae-enhancer-token/);
+  assert.match(body, /x-traemeta-enhancer-token/);
   assert.match(body, /catch \(error\)/);
   // A notice that could not be delivered must not take the launch down with it.
   assert.doesNotMatch(body, /throw /);

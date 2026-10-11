@@ -269,7 +269,7 @@ export class TraeFakeLogoutManager {
     try {
       if (session.cancelRequested) throw new Error("登录流程已取消");
 
-      await this.setSessionState(session, "stopping", "正在安全关闭 TRAE SOLO CN...");
+      await this.setSessionState(session, "stopping", "正在安全关闭 Trae CN...");
       await this.stopTrae();
       traeStopped = true;
       if (session.cancelRequested) throw new Error("登录流程已取消");

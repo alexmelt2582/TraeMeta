@@ -77,7 +77,7 @@ export async function isTraeCdpAvailable(port, timeoutMs = 2500) {
 export async function findTraeWindowProcessIds(exePath) {
   const script = `
     $target = ${psQuote(exePath)}
-    $items = @(Get-Process -Name 'TRAE SOLO CN' -ErrorAction SilentlyContinue | Where-Object {
+    $items = @(Get-Process -Name 'Trae CN' -ErrorAction SilentlyContinue | Where-Object {
       $_.Path -and $_.Path.Equals($target, [System.StringComparison]::OrdinalIgnoreCase) -and $_.MainWindowHandle -ne 0
     } | Select-Object -ExpandProperty Id)
     $items | ConvertTo-Json -Compress
@@ -91,7 +91,7 @@ export async function findTraeWindowProcessIds(exePath) {
 export async function findTraeProcessIds(exePath) {
   const script = `
     $target = ${psQuote(exePath)}
-    @(Get-Process -Name 'TRAE SOLO CN' -ErrorAction SilentlyContinue | Where-Object {
+    @(Get-Process -Name 'Trae CN' -ErrorAction SilentlyContinue | Where-Object {
       $_.Path -and $_.Path.Equals($target, [System.StringComparison]::OrdinalIgnoreCase)
     } | Select-Object -ExpandProperty Id) | ConvertTo-Json -Compress
   `;
@@ -266,7 +266,7 @@ export async function stopTraeForRestart(exePath, { timeoutMs = 15000 } = {}) {
   await runPowerShell(forceScript);
   remaining = await waitForExit(remaining, 5000);
   if (remaining.length) {
-    throw new Error(`Unable to stop TRAE SOLO CN process(es): ${remaining.join(", ")}`);
+    throw new Error(`Unable to stop Trae CN process(es): ${remaining.join(", ")}`);
   }
   return [];
 }
@@ -299,7 +299,7 @@ export async function startTraeWithCdp(exePath, port) {
 export async function focusTraeWindow(exePath) {
   const script = `
     $target = ${psQuote(exePath)}
-    $pids = @(Get-Process -Name 'TRAE SOLO CN' -ErrorAction SilentlyContinue | Where-Object {
+    $pids = @(Get-Process -Name 'Trae CN' -ErrorAction SilentlyContinue | Where-Object {
       $_.Path -and $_.Path.Equals($target, [System.StringComparison]::OrdinalIgnoreCase)
     } | Select-Object -ExpandProperty Id)
     if (-not $pids.Count) { Write-Output 'no-process'; exit 0 }

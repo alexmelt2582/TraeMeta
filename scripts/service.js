@@ -279,7 +279,7 @@ async function waitForHealth(timeoutMs) {
 }
 
 async function commandStart(args = []) {
-  log("starting TRAE SOLO CN with CDP, the daemon, and the panel...");
+  log("starting Trae CN with CDP, the daemon, and the panel...");
   const launch = launcherSpec(args);
   const child = spawn(launch.command, launch.args, {
     cwd: launch.cwd,
@@ -308,7 +308,7 @@ function spawnDaemonNow() {
     windowsHide: true,
     env: {
       ...stripProxyEnv(process.env),
-      TRAE_ENHANCER_UI_PORT: String(UI_PORT),
+      TRAEMETA_ENHANCER_UI_PORT: String(UI_PORT),
     },
   });
   child.unref();
@@ -759,7 +759,7 @@ async function commandConfigure(args = []) {
 
   const raw = flagValue(args, "--trae-exe");
   if (!raw) {
-    log('用法: configure --trae-exe "D:\\路径\\TRAE SOLO CN.exe"');
+    log('用法: configure --trae-exe "D:\\路径\\Trae CN.exe"');
     log("      configure --clear");
     log("      configure --proxy-mode off|system|custom [--proxy-scheme ...] [--proxy-host ...] [--proxy-port ...]");
     process.exitCode = 2;
@@ -821,7 +821,7 @@ async function waitForEnter() {
  * The bundled executable receives the internal dispatch flag as well, and it can
  * land before the command. `parseServiceArgs` drops those flags first so the
  * argument position is identical between `node scripts/service.js` and
- * `TraeEnhancer.exe`.
+ * `TraeMeta.exe`.
  */
 async function main() {
   const { hasCommand, command, rest } = parseServiceArgs(process.argv);

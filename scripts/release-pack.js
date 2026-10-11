@@ -29,8 +29,8 @@ const PORTABLE_DIR = path.join(DIST_DIR, "portable");
 const INSTALLER_DIR = path.join(DIST_DIR, "installer");
 const RELEASE_DIR = path.join(DIST_DIR, "release");
 
-const SETUP_BASE = "TraeEnhancer-Setup";
-const PORTABLE_BASE = "TraeEnhancer-Portable";
+const SETUP_BASE = "TraeMeta-Setup";
+const PORTABLE_BASE = "TraeMeta-Portable";
 const CHECKSUM_FILE = "SHA256SUMS.txt";
 
 /** Folder holding one version's artifacts, so releases never overwrite each other. */
@@ -48,9 +48,9 @@ function versionDir(version) {
  * honest in the same way.
  */
 const PORTABLE_PAYLOAD = [
-  "TraeEnhancer.exe",
+  "TraeMeta.exe",
   "README.md",
-  "scripts/trae-enhancer.cmd",
+  "scripts/trae-meta.cmd",
   "scripts/tray.ps1",
   "scripts/launch-hidden.vbs",
 ];

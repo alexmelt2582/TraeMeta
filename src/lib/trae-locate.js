@@ -1,5 +1,5 @@
 /**
- * Locates the TRAE SOLO CN executable.
+ * Locates the Trae CN executable.
  *
  * The install path is never assumed to be the default one. Detection walks a
  * fixed priority list and records where every probed value came from, so a
@@ -7,7 +7,7 @@
  *
  *   1. an explicit `--trae-exe` argument
  *   2. the saved configuration file
- *   3. the `TRAE_ENHANCER_TRAE_EXE` environment variable
+ *   3. the `TRAEMETA_ENHANCER_TRAE_EXE` environment variable
  *   4. the path of a running TRAE process  (most reliable when TRAE is open)
  *   5. the uninstall registry entries
  *   6. well-known installation directories
@@ -24,13 +24,13 @@ import { loadAppConfig, configPath } from "./app-config.js";
 
 const execFileAsync = promisify(execFile);
 
-export const TRAE_EXE_NAME = "TRAE SOLO CN.exe";
-export const TRAE_PROCESS_NAME = "TRAE SOLO CN";
+export const TRAE_EXE_NAME = "Trae CN.exe";
+export const TRAE_PROCESS_NAME = "Trae CN";
 
 export const SOURCES = {
   explicit: "命令行参数 --trae-exe",
   config: "配置文件 config.json",
-  env: "环境变量 TRAE_ENHANCER_TRAE_EXE",
+  env: "环境变量 TRAEMETA_ENHANCER_TRAE_EXE",
   process: "运行中的 TRAE 进程",
   registry: "注册表卸载项",
   candidate: "常见安装位置",
@@ -97,21 +97,15 @@ export function matchesProductExeName(candidate) {
 }
 
 /**
- * The strongest registry signal is the file name in `DisplayIcon`: it is the one
- * value that survives a non-default install drive and does not depend on how the
- * product brands itself. TRAE SOLO CN registers as `TraeWork CN (User)`, a display
- * name that contains neither `TRAE SOLO CN` nor any shorter string a substring
- * rule could safely key on, so a display-name-only rule skips the real install
- * entirely and quietly falls back to the well-known directories.
- *
- * The unrelated "Trae CN" IDE stays excluded: its DisplayIcon is `Trae CN.exe`,
- * and neither of the accepted display names matches it.
+ * The merged TRAE client registers as `TRAE CN (User)`, so the display name is
+ * matched strictly on `Trae CN`. A looser rule such as `/TRAE/` would also admit
+ * the other two Trae-branded installs on this machine — the legacy `TraeWork CN`
+ * workspace and the `TraeCode CN` build — and the wrong executable would break
+ * every flow that restarts TRAE. Both of those insert a word between `Trae` and
+ * `CN`, so a plain substring test already excludes them.
  */
 export function isProductDisplayName(displayName) {
-  return (
-    typeof displayName === "string" &&
-    (/TRAE SOLO CN/i.test(displayName) || /TRAEWORK CN/i.test(displayName))
-  );
+  return typeof displayName === "string" && /Trae CN/i.test(displayName);
 }
 
 function registryCandidates(entries) {
@@ -137,7 +131,7 @@ function registryCandidates(entries) {
 async function* sourceValues({ explicit, configured, env, probe }) {
   yield { value: explicit, source: "explicit" };
   yield { value: configured, source: "config" };
-  yield { value: env.TRAE_ENHANCER_TRAE_EXE, source: "env" };
+  yield { value: env.TRAEMETA_ENHANCER_TRAE_EXE, source: "env" };
   for (const value of await probe.runningProcessPaths()) {
     yield { value, source: "process" };
   }
@@ -217,11 +211,10 @@ async function windowsSnapshot() {
     "  'HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',",
     "  'HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'",
     ")",
-    // The filter has to admit the real install, whose DisplayName is
-    // "TraeWork CN (User)": a display-name-only rule drops it before the
-    // JavaScript matcher ever sees the entry. The DisplayIcon pattern is what
-    // actually identifies the product, and it is drive independent.
-    "$uninstall = @(Get-ItemProperty $keys | Where-Object { ($_.DisplayName -match 'TRAE SOLO CN|TraeWork CN') -or ($_.DisplayIcon -match 'TRAE SOLO CN\\.exe') } | Select-Object DisplayName, InstallLocation, DisplayIcon)",
+    // The filter admits the merged install, whose DisplayName is "TRAE CN (User)".
+    // The DisplayIcon pattern is a second, drive-independent signal that keys on
+    // the executable name rather than on how the product brands itself.
+    "$uninstall = @(Get-ItemProperty $keys | Where-Object { ($_.DisplayName -match 'Trae CN') -or ($_.DisplayIcon -match 'Trae CN\\.exe') } | Select-Object DisplayName, InstallLocation, DisplayIcon)",
     "[ordered]@{ processPaths = $proc; uninstall = $uninstall } | ConvertTo-Json -Depth 4 -Compress",
   ].join("\n");
   const { stdout } = await execFileAsync(
@@ -278,7 +271,7 @@ export function formatResolvedLine(result) {
 
 export function formatNotFoundHelp({ attempts, dataDir }) {
   const lines = [
-    "找不到 TRAE SOLO CN 的可执行文件。已探测以下位置：",
+    "找不到 Trae CN 的可执行文件。已探测以下位置：",
   ];
   for (const attempt of attempts) {
     lines.push(
@@ -287,7 +280,7 @@ export function formatNotFoundHelp({ attempts, dataDir }) {
   }
   lines.push("");
   lines.push("请手动指定一次，之后会记住：");
-  lines.push('  TraeEnhancer.exe configure --trae-exe "D:\\你的路径\\TRAE SOLO CN.exe"');
+  lines.push('  TraeMeta.exe configure --trae-exe "D:\\你的路径\\Trae CN.exe"');
   lines.push(`配置文件位置：${configPath(dataDir)}`);
   return lines.join("\n");
 }

@@ -1,30 +1,30 @@
 (() => {
   "use strict";
 
-  const ROOT_ID = "trae-enhancer-root";
-  const STYLE_ID = "trae-enhancer-style";
+  const ROOT_ID = "traemeta-root";
+  const STYLE_ID = "traemeta-style";
   const API_BASE = "__API_BASE__";
   const API_TOKEN = "__API_TOKEN__";
   const APP_VERSION = "__APP_VERSION__";
   // Dispatched by the daemon through CDP after any account state change. The
   // panel is a pure view, so this is how a background sweep reaches an already
   // open panel without a polling loop on this side.
-  const ACCOUNTS_UPDATED_EVENT = "trae-enhancer:accounts-updated";
+  const ACCOUNTS_UPDATED_EVENT = "traemeta:accounts-updated";
   // Dispatched by the daemon when its scheduled check finds a newer release, so
   // the About tab can show the dot without the panel ever polling GitHub (the
   // workbench CSP would block that request anyway).
-  const UPDATE_AVAILABLE_EVENT = "trae-enhancer:update-available";
+  const UPDATE_AVAILABLE_EVENT = "traemeta:update-available";
   // Dispatched by the daemon while an in-app upgrade is downloading or verifying.
   // The upgrade request stays open for the whole download, so without this the
   // panel could only show one frozen line until it finished.
-  const UPDATE_PROGRESS_EVENT = "trae-enhancer:update-progress";
+  const UPDATE_PROGRESS_EVENT = "traemeta:update-progress";
   // Dispatched by the daemon on behalf of another process that has something to
   // tell the user, such as the launcher failing to bring TRAE to the front. It is
   // one-shot: the panel may well be closed when it arrives, so the handler opens
   // it before showing the toast.
-  const NOTICE_EVENT = "trae-enhancer:notice";
+  const NOTICE_EVENT = "traemeta:notice";
 
-  window.__traeEnhancerCleanup?.();
+  window.__traeMetaCleanup?.();
   document.getElementById(ROOT_ID)?.remove();
   document.getElementById(STYLE_ID)?.remove();
 
@@ -2087,7 +2087,7 @@
   function loginSessionSeen(sessionId) {
     if (!sessionId) return false;
     try {
-      return localStorage.getItem(`trae-enhancer:login:${sessionId}`) === "seen";
+      return localStorage.getItem(`traemeta:login:${sessionId}`) === "seen";
     } catch {
       return false;
     }
@@ -2096,24 +2096,69 @@
   function markLoginSessionSeen(sessionId) {
     if (!sessionId) return;
     try {
-      localStorage.setItem(`trae-enhancer:login:${sessionId}`, "seen");
+      localStorage.setItem(`traemeta:login:${sessionId}`, "seen");
     } catch {
       // Local storage is optional; the in-memory guard still prevents repeats.
     }
   }
 
-  function api(path, options = {}) {
-    return fetch(`${API_BASE}${path}`, {
-      ...options,
-      headers: {
-        "content-type": "application/json",
-        "x-trae-enhancer-token": API_TOKEN,
-        ...(options.headers || {}),
-      },
-    }).then(async (response) => {
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        const error = new Error(data.error || `HTTP ${response.status}`);
+  /**
+   * 合并版 Trae CN 的 workbench CSP 禁止 `connect-src http:`，但放行 `ws:`，
+   * 面板因此只能通过 WebSocket 访问守护进程。下面的 API 形状与原来的 HTTP 完全
+   * 一致，只有最底下的传输层由 fetch 换成了 ws。
+   */
+  let rpcSocket = null;
+  let rpcOpen = null;
+  let rpcId = 0;
+  const rpcPending = new Map();
+
+  function panicRpc(error) {
+    const entries = [...rpcPending.values()];
+    rpcPending.clear();
+    for (const entry of entries) entry.reject(error);
+  }
+
+  function openRpcSocket() {
+    return new Promise((resolve, reject) => {
+      let ws;
+      try {
+        ws = new WebSocket(`${API_BASE.replace(/^http:/, "ws:")}/panel`);
+      } catch (error) {
+        rpcSocket = null;
+        panicRpc(new Error(`无法连接增强服务 (${API_BASE})`));
+        reject(error);
+        return;
+      }
+      ws.onopen = () => {
+        rpcSocket = ws;
+        resolve(ws);
+      };
+      ws.onerror = () => {
+        rpcSocket = null;
+        panicRpc(new Error(`无法连接增强服务 (${API_BASE})`));
+        reject(new Error("websocket error"));
+      };
+      ws.onclose = () => {
+        rpcSocket = null;
+        panicRpc(new Error("增强服务通道已断开"));
+      };
+      ws.onmessage = (event) => {
+        let msg;
+        try {
+          msg = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+        const entry = rpcPending.get(msg.id);
+        if (!entry) return;
+        rpcPending.delete(msg.id);
+        if (msg.ok) {
+          entry.resolve(msg.data ?? {});
+          return;
+        }
+        // 优先用响应体里的 error 字段：msg.error 是原始 JSON 文本，直接抛给用户
+        // 会变成一长串花括号。
+        const error = new Error(msg.data?.error || msg.error || `HTTP ${msg.status}`);
         /**
          * The daemon's own error codes are carried through so a caller can act on
          * what happened instead of on the sentence describing it. `install-in-flight`
@@ -2121,10 +2166,50 @@
          * a failure, and matching Chinese text to tell them apart would break the
          * moment either string is reworded.
          */
-        if (typeof data.code === "string") error.code = data.code;
-        throw error;
+        if (typeof msg.data?.code === "string") error.code = msg.data.code;
+        entry.reject(error);
+      };
+    });
+  }
+
+  function sendRpc(msg) {
+    if (rpcSocket && rpcSocket.readyState === 1) {
+      rpcSocket.send(JSON.stringify(msg));
+      return;
+    }
+    if (!rpcOpen) {
+      rpcOpen = openRpcSocket()
+        .catch(() => undefined)
+        .finally(() => {
+          rpcOpen = null;
+        });
+    }
+    rpcOpen.then((ws) => {
+      try {
+        if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
+      } catch {
+        // The socket died between the check and the send.
       }
-      return data;
+    });
+  }
+
+  /**
+   * 刻意不加超时：`/api/accounts/switch` 要等守护进程走完「停 Trae → 清除本机
+   * 登录信息 → 重启 Trae → 等 CDP」整个过程，远超过任何合理的固定超时值。连接
+   * 真的断了会由 onclose/onerror 统一 reject，这才是正确的失败信号。
+   */
+  function api(path, options = {}) {
+    const body = options.body === undefined ? undefined : String(options.body);
+    return new Promise((resolve, reject) => {
+      const id = ++rpcId;
+      rpcPending.set(id, { resolve, reject });
+      sendRpc({
+        id,
+        path,
+        method: String(options.method || "GET").toUpperCase(),
+        body,
+        token: API_TOKEN,
+      });
     });
   }
 
@@ -3483,7 +3568,7 @@
        */
       status =
         "安装向导已经打开。如果它没有出现在 TRAE 前面，请到任务栏点一下" +
-        "「TRAE SOLO CN Enhancer 安装」窗口。安装期间助手服务会短暂停止，" +
+        "「Trae Meta 安装」窗口。安装期间助手服务会短暂停止，" +
         "向导结束后回到面板点「重载界面」即可。";
       showClose = true;
     } else if (state.stage === "failed") {
@@ -3860,8 +3945,10 @@
     await new Promise((resolve) => setTimeout(resolve, 800));
     while (Date.now() < deadline) {
       try {
-        const response = await fetch(`${API_BASE}/api/health`, { cache: "no-store" });
-        if (response.ok) return true;
+        // 通过 WS 探测：合并版 CSP 禁止 `connect-src http:`，fetch 会被拦截；守护
+        // 进程重启期间 socket 会断开并被上面的 onclose 拒绝，恢复后这里就通了。
+        await api("/api/health");
+        return true;
       } catch {
         // Still down; keep waiting.
       }
@@ -3898,7 +3985,7 @@
    * the daemon already pushes after its own refresh, so asking again here would
    * loop. The 150ms debounce collapses a burst of changes into one repaint.
    *
-   * The listener is removed by `__traeEnhancerCleanup`, because the daemon
+   * The listener is removed by `__traeMetaCleanup`, because the daemon
    * re-injects this script every time CDP reconnects.
    */
   let accountsUpdatedPending = false;
@@ -4171,7 +4258,7 @@
     if (result.message) return result.message;
     const messages = {
       preparing: "正在备份当前账号...",
-      stopping: "正在安全关闭 TRAE SOLO CN...",
+      stopping: "正在安全关闭 Trae CN...",
       clearing: "正在切换到登录页...",
       starting: "正在重新打开 TRAE 登录页...",
       awaiting_login: "请在 TRAE 登录页扫码登录新账号，登录后会自动保存。",
@@ -4451,7 +4538,7 @@
             password: password.input.value,
           }),
         });
-        downloadTransfer(result, "TRAE-SOLO-CN-accounts.json");
+        downloadTransfer(result, "TraeMeta-accounts.json");
         showToast(`已导出 ${result.count} 个账号（已加密）`);
         closeTransferDialog();
       };
@@ -4773,7 +4860,7 @@
     }
   });
 
-  window.__traeEnhancerCleanup = () => {
+  window.__traeMetaCleanup = () => {
     clearTimeout(toastTimer);
     clearTimeout(accountsUpdatedTimer);
     window.removeEventListener(ACCOUNTS_UPDATED_EVENT, handleAccountsUpdated);
@@ -4788,7 +4875,7 @@
     stopFakeLogoutPolling();
     root.remove();
     style.remove();
-    delete window.__traeEnhancerCleanup;
+    delete window.__traeMetaCleanup;
   };
 
   resumeFakeLogout().catch(() => {});

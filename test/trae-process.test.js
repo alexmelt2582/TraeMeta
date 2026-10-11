@@ -32,7 +32,7 @@ test("every known Cockpit image name is matched", () => {
 test("unrelated processes are not mistaken for Cockpit", () => {
   // The TRAE match has to stay strict: a looser rule also selects the unrelated
   // "Trae CN" IDE and breaks every flow that restarts TRAE.
-  assert.equal(isCockpitImageName("TRAE SOLO CN.exe"), false);
+  assert.equal(isCockpitImageName("Trae CN.exe"), false);
   assert.equal(isCockpitImageName("Cockpit.exe"), false);
   assert.equal(isCockpitImageName("node.exe"), false);
   assert.equal(isCockpitImageName(""), false);

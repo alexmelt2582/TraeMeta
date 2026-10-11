@@ -4,7 +4,7 @@ import zlib from "node:zlib";
 
 import { validateAuthSnapshot } from "./trae-storage.js";
 
-const FORMAT = "trae-solo-cn-enhancer";
+const FORMAT = "trae-meta";
 const EXPORT_TYPE = "accounts";
 const VERSION = 1;
 const COMPRESSION = "gzip";
@@ -85,7 +85,7 @@ function validateEnvelope(envelope) {
     envelope.encryption.r !== SCRYPT_R ||
     envelope.encryption.p !== SCRYPT_P
   ) {
-    throw new Error("不是有效的 TRAE SOLO CN Enhancer 账号导出文件");
+    throw new Error("不是有效的 Trae Meta 账号导出文件");
   }
 }
 
@@ -148,7 +148,7 @@ export async function createAccountsExport(accounts, password, { now = Date.now(
   envelope.encryption.tag = cipher.getAuthTag().toString("base64");
   envelope.data = encrypted.toString("base64");
   return {
-    filename: `TRAE-SOLO-CN-账号导出-${createdAt.slice(0, 10)}.json`,
+    filename: `TraeMeta-账号导出-${createdAt.slice(0, 10)}.json`,
     mimeType: "application/json",
     content: `${JSON.stringify(envelope, null, 2)}\n`,
     count: accounts.length,

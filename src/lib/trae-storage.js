@@ -104,7 +104,7 @@ export function extractAuthSnapshot(storageRoot, { capturedAt = Date.now() } = {
 
   const snapshot = {
     schemaVersion: 1,
-    platform: "trae_solo_cn",
+    platform: "trae_code_cn",
     capturedAt,
     keys,
   };
@@ -250,10 +250,10 @@ export function normalizeAuthSnapshotForInjection(snapshot) {
   auth.host ??= "https://api.trae.cn";
   auth.loginHost ??= auth.host;
   auth.apiHost ??= auth.host;
-  auth.authClientId ??= "en1oxy7wnw8j9n";
+  auth.authClientId ??= "ono9krqynydwx5";
   auth.authDomain ??= "www.trae.cn";
-  auth.platformId ??= "trae_solo_cn";
-  auth.platformName ??= "TRAE SOLO CN";
+  auth.platformId ??= "trae_code_cn";
+  auth.platformName ??= "Trae CN";
   auth.storeRegion = normalizeText(auth.storeRegion) || "CN";
   auth.AIRegion = normalizeText(auth.AIRegion) || "CN";
   auth.userTag = userTag;

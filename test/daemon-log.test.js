@@ -49,7 +49,7 @@ test("secret query values and long hex strings are removed", () => {
 });
 
 test("ordinary text is left alone", () => {
-  const line = "daemon listening on http://127.0.0.1:47834 accounts=3";
+  const line = "daemon listening on http://127.0.0.1:47837 accounts=3";
   assert.equal(redactLogLine(line), line);
 });
 
@@ -64,10 +64,10 @@ test("the logger writes redacted lines and creates its directory", async () => {
   const logPath = path.join(dir, "nested", "daemon.log");
   try {
     const logger = createDaemonLogger({ logPath, mirror: false });
-    logger.info("listening", { port: 47834 });
+    logger.info("listening", { port: 47837 });
     logger.error(new Error("boom access_token=abc123"));
     const text = await fsp.readFile(logPath, "utf8");
-    assert.match(text, /\[info\] listening \{"port":47834\}/);
+    assert.match(text, /\[info\] listening \{"port":47837\}/);
     assert.match(text, /\[error\]/);
     assert.match(text, /boom/);
     assert.equal(text.includes("abc123"), false);

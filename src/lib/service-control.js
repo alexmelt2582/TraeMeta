@@ -10,8 +10,8 @@ const MANAGED_IMAGE_NAMES = new Set([
   "node",
   "powershell",
   "pwsh",
-  "trae-solo-cn-enhancer",
-  "traeenhancer",
+  "trae-meta",
+  "traemeta",
 ]);
 
 export function normalizePid(value) {

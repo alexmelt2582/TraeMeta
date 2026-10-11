@@ -23,7 +23,7 @@ import {
 
 test("plain arguments are not mistaken for an internal switch", () => {
   assert.equal(classifyInternal(["node", "scripts/service.js", "status"]), null);
-  assert.equal(classifyInternal(["TraeEnhancer.exe", "start"]), null);
+  assert.equal(classifyInternal(["TraeMeta.exe", "start"]), null);
   assert.equal(classifyInternal([]), null);
 });
 
@@ -69,7 +69,7 @@ test("only the leading internal switch is honored", () => {
 test("every launch spec runs the current node binary from the project root", () => {
   for (const spec of [daemonSpec(), launcherSpec(), watchdogSpec(["--quiet"])]) {
     assert.equal(spec.command, process.execPath);
-    assert.equal(spec.cwd, process.env.TRAE_ENHANCER_APP_ROOT ?? spec.cwd);
+    assert.equal(spec.cwd, process.env.TRAEMETA_ENHANCER_APP_ROOT ?? spec.cwd);
     assert.equal(Array.isArray(spec.args), true);
     assert.equal(spec.args.length > 0, true);
   }

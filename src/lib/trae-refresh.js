@@ -10,7 +10,7 @@ import {
 } from "./trae-insights.js";
 import { normalizeEmail, traeStorageKeys } from "./trae-storage.js";
 
-const CLIENT_ID = "en1oxy7wnw8j9n";
+const CLIENT_ID = "ono9krqynydwx5";
 const EXCHANGE_PATH = "/trae/api/v3/oauth/ExchangeToken";
 const LEGACY_EXCHANGE_PATH = "/cloudide/api/v3/trae/oauth/ExchangeToken";
 const USER_INFO_PATH = "/cloudide/api/v3/trae/GetUserInfo";
@@ -249,7 +249,7 @@ export async function refreshAuthSnapshot(snapshot) {
   const deviceInfo = {
     DeviceID: identity?.deviceId ?? auth.deviceInfo?.DeviceID,
     MachineID: identity?.machineId ?? auth.deviceInfo?.MachineID,
-    PlatformCode: auth.deviceInfo?.PlatformCode ?? "SOLO_PC",
+    PlatformCode: auth.deviceInfo?.PlatformCode ?? "IDE_PC",
     DeviceType: auth.deviceInfo?.DeviceType ?? identity?.deviceType ?? "PC",
     DeviceName: identity?.deviceName ?? auth.deviceInfo?.DeviceName,
     DeviceModel: identity?.deviceBrand ?? auth.deviceInfo?.DeviceModel,

@@ -35,23 +35,23 @@ function argumentValue(name) {
 }
 
 const cdpPort = parsePort(
-  argumentValue("--cdp-port") || process.env.TRAE_ENHANCER_CDP_PORT,
+  argumentValue("--cdp-port") || process.env.TRAEMETA_ENHANCER_CDP_PORT,
   DEFAULT_CDP_PORT,
 );
 const uiPort = parsePort(
-  argumentValue("--ui-port") || process.env.TRAE_ENHANCER_UI_PORT,
+  argumentValue("--ui-port") || process.env.TRAEMETA_ENHANCER_UI_PORT,
   DEFAULT_UI_PORT,
 );
 const explicitTraeExe = argumentValue("--trae-exe");
-let exePath = explicitTraeExe || process.env.TRAE_ENHANCER_TRAE_EXE || DEFAULT_TRAE_EXE;
+let exePath = explicitTraeExe || process.env.TRAEMETA_ENHANCER_TRAE_EXE || DEFAULT_TRAE_EXE;
 const userDataDir =
   argumentValue("--user-data-dir") ||
-  process.env.TRAE_ENHANCER_USER_DATA_DIR ||
+  process.env.TRAEMETA_ENHANCER_USER_DATA_DIR ||
   DEFAULT_TRAE_USER_DATA_DIR;
 const dataDir =
-  argumentValue("--data-dir") || process.env.TRAE_ENHANCER_DATA_DIR || DEFAULT_DATA_DIR;
+  argumentValue("--data-dir") || process.env.TRAEMETA_ENHANCER_DATA_DIR || DEFAULT_DATA_DIR;
 const storagePath =
-  process.env.TRAE_ENHANCER_STORAGE_PATH ||
+  process.env.TRAEMETA_ENHANCER_STORAGE_PATH ||
   path.join(userDataDir, "User", "globalStorage", "storage.json");
 const noRestart = process.argv.includes("--no-restart");
 
@@ -76,11 +76,11 @@ async function startDaemon() {
     windowsHide: true,
     env: {
       ...stripProxyEnv(process.env),
-      TRAE_ENHANCER_CDP_PORT: String(cdpPort),
-      TRAE_ENHANCER_UI_PORT: String(uiPort),
-      TRAE_ENHANCER_DATA_DIR: dataDir,
-      TRAE_ENHANCER_STORAGE_PATH: storagePath,
-      TRAE_ENHANCER_USER_DATA_DIR: userDataDir,
+      TRAEMETA_ENHANCER_CDP_PORT: String(cdpPort),
+      TRAEMETA_ENHANCER_UI_PORT: String(uiPort),
+      TRAEMETA_ENHANCER_DATA_DIR: dataDir,
+      TRAEMETA_ENHANCER_STORAGE_PATH: storagePath,
+      TRAEMETA_ENHANCER_USER_DATA_DIR: userDataDir,
     },
   });
   child.unref();
@@ -108,7 +108,7 @@ async function notifyPanel(dataDirPath, token, message) {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-trae-enhancer-token": token,
+        "x-traemeta-enhancer-token": token,
       },
       body: JSON.stringify({ message }),
     });
@@ -187,17 +187,17 @@ async function main() {
   let cdpReady = alreadyRunning;
   if (!cdpReady && noRestart) {
     throw new Error(
-      `TRAE SOLO CN is not exposing CDP port ${cdpPort}. Start it through this launcher.`,
+      `Trae CN is not exposing CDP port ${cdpPort}. Start it through this launcher.`,
     );
   }
 
   if (!cdpReady) {
-    console.log(`[${APP_NAME}] Restarting TRAE SOLO CN with CDP port ${cdpPort}...`);
+    console.log(`[${APP_NAME}] Restarting Trae CN with CDP port ${cdpPort}...`);
     await stopTraeForRestart(exePath);
     await startTraeWithCdp(exePath, cdpPort);
     cdpReady = await waitForCdp(cdpPort);
     if (!cdpReady) {
-      throw new Error(`Timed out waiting for TRAE SOLO CN CDP port ${cdpPort}`);
+      throw new Error(`Timed out waiting for Trae CN CDP port ${cdpPort}`);
     }
   }
 
@@ -210,7 +210,7 @@ async function main() {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-trae-enhancer-token": token,
+        "x-traemeta-enhancer-token": token,
       },
       body: "{}",
     });

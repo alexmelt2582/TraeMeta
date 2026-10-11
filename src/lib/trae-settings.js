@@ -39,7 +39,7 @@ export function traeSettingsPath(userDataDir = DEFAULT_TRAE_USER_DATA_DIR) {
 }
 
 export function traeSettingsBackupPath(userDataDir = DEFAULT_TRAE_USER_DATA_DIR) {
-  return `${traeSettingsPath(userDataDir)}.trae-enhancer.bak`;
+  return `${traeSettingsPath(userDataDir)}.traemeta.bak`;
 }
 
 /* -------------------------------------------------------------------------- *
@@ -372,7 +372,7 @@ export async function readTraeUpdateState({ userDataDir = DEFAULT_TRAE_USER_DATA
  * Writes `update.mode` — either the suppressing value, or the value that was there
  * before this project touched the file.
  *
- * The first write copies the file to `<settings.json>.trae-enhancer.bak`, and a
+ * The first write copies the file to `<settings.json>.traemeta.bak`, and a
  * failed write restores it, so a half-written settings file can never be left
  * behind. Writing nothing when the file already reads correctly keeps the file's
  * mtime stable across daemon restarts.

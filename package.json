@@ -1,8 +1,8 @@
 {
-  "name": "trae-solo-cn-enhancer",
-  "version": "1.4.0",
+  "name": "trae-meta",
+  "version": "2.0.0",
   "private": true,
-  "description": "TRAE SOLO CN desktop enhancement assistant",
+  "description": "Trae Meta: desktop enhancement assistant for the merged TRAE (Trae CN)",
   "type": "module",
   "scripts": {
     "start": "node src/launcher.js",
@@ -14,7 +14,7 @@
     "build:installer": "node scripts/win/build-installer.js",
     "release:pack": "node scripts/release-pack.js",
     "release:publish": "node scripts/release-publish.js",
-    "git:status": "git --git-dir=.git-meta --work-tree=. status --short",
+    "git:status": "git status --short",
     "test": "node --test",
     "check": "node scripts/check-syntax.js"
   },

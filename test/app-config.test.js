@@ -42,14 +42,14 @@ test("a missing or empty trae path normalizes to null", () => {
 
 test("a usable trae path is normalized", () => {
   assert.equal(
-    normalizeTraeExe("  D:\\Me\\副业\\TRAE SOLO CN.exe  "),
-    path.normalize("D:\\Me\\副业\\TRAE SOLO CN.exe"),
+    normalizeTraeExe("  D:\\Me\\副业\\Trae CN.exe  "),
+    path.normalize("D:\\Me\\副业\\Trae CN.exe"),
   );
 });
 
 test("a relative or non executable path is rejected instead of being stored", () => {
-  assert.throws(() => normalizeTraeExe("TRAE SOLO CN.exe"), /must be an absolute path/);
-  assert.throws(() => normalizeTraeExe(".\\TRAE SOLO CN.exe"), /must be an absolute path/);
+  assert.throws(() => normalizeTraeExe("Trae CN.exe"), /must be an absolute path/);
+  assert.throws(() => normalizeTraeExe(".\\Trae CN.exe"), /must be an absolute path/);
   assert.throws(() => normalizeTraeExe("C:\\apps\\readme.txt"), /must point to an \.exe/);
   assert.throws(() => normalizeTraeExe(42), /must be a string or null/);
   assert.throws(() => normalizeTraeExe("C:\\a\0b.exe"), /null byte/);
@@ -177,7 +177,7 @@ test("loading a missing configuration file yields defaults", async () => {
 
 test("saving then loading keeps the selected trae path", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "trae-config-"));
-  const exe = path.normalize("D:\\Me\\副业\\TRAE SOLO CN.exe");
+  const exe = path.normalize("D:\\Me\\副业\\Trae CN.exe");
   try {
     await saveAppConfig(dir, { traeExe: exe });
     assert.deepEqual(await loadAppConfig(dir), { ...DEFAULTS, traeExe: exe });
@@ -194,7 +194,7 @@ test("saving then loading keeps the selected trae path", async () => {
 
 test("saving a patch keeps the previous values", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "trae-config-"));
-  const exe = path.normalize("C:\\apps\\TRAE SOLO CN.exe");
+  const exe = path.normalize("C:\\apps\\Trae CN.exe");
   try {
     await saveAppConfig(dir, { traeExe: exe });
     await saveAppConfig(dir, { checkin: { auto: false } });
@@ -217,7 +217,7 @@ test("saving a patch keeps the previous values", async () => {
 
 test("saving an invalid path does not overwrite a good configuration", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "trae-config-"));
-  const exe = path.normalize("C:\\apps\\TRAE SOLO CN.exe");
+  const exe = path.normalize("C:\\apps\\Trae CN.exe");
   try {
     await saveAppConfig(dir, { traeExe: exe });
     await assert.rejects(

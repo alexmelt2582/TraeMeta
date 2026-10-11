@@ -117,7 +117,7 @@ test("exempted hosts get no dispatcher, so the request stays direct", async () =
     await applyProxyConfig({ proxy: { ...CUSTOM, noProxy: "api.trae.cn" } });
     assert.equal(getDispatcherFor("https://api.trae.cn/x"), null);
     assert.equal(getDispatcherFor("https://www.trae.cn/x"), getDispatcher());
-    assert.equal(getDispatcherFor("http://localhost:47834/api/health"), null);
+    assert.equal(getDispatcherFor("http://localhost:47837/api/health"), null);
   } finally {
     resetProxyRuntime();
   }

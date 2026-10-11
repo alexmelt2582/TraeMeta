@@ -4,7 +4,7 @@
  * The PowerShell host is ASCII-only, so every display string lives here and is
  * handed over through a UTF-8 JSON file instead of being embedded in the script.
  */
-export const TRAY_TITLE = "TRAE SOLO CN Enhancer";
+export const TRAY_TITLE = "Trae Meta";
 export const TRAY_BALLOON_TEXT = "后台服务已就绪";
 
 export const TRAY_MENU_ITEMS = [

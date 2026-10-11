@@ -18,14 +18,14 @@ const TEMPLATE = [
 
 test("rendering replaces every injection placeholder", () => {
   const rendered = renderInjectScript(TEMPLATE, {
-    apiBase: "http://127.0.0.1:47834",
+    apiBase: "http://127.0.0.1:47837",
     apiToken: "abc123",
     appVersion: "1.0.0",
   });
   assert.equal(rendered.includes("__API_BASE__"), false);
   assert.equal(rendered.includes("__API_TOKEN__"), false);
   assert.equal(rendered.includes("__APP_VERSION__"), false);
-  assert.match(rendered, /const base = 'http:\/\/127\.0\.0\.1:47834';/);
+  assert.match(rendered, /const base = 'http:\/\/127\.0\.0\.1:47837';/);
   assert.match(rendered, /const token = 'abc123';/);
   assert.match(rendered, /const version = '1\.0\.0';/);
 });

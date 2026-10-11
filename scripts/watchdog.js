@@ -37,7 +37,7 @@ import {
 } from "../src/lib/service-control.js";
 
 const POLL_INTERVAL_MS =
-  Number.parseInt(process.env.TRAE_ENHANCER_WATCHDOG_INTERVAL_MS ?? "", 10) || 15_000;
+  Number.parseInt(process.env.TRAEMETA_ENHANCER_WATCHDOG_INTERVAL_MS ?? "", 10) || 15_000;
 const FAILURE_THRESHOLD = 3;
 const START_COOLDOWN_MS = 60_000;
 const HEALTH_TIMEOUT_MS = 4_000;
@@ -103,7 +103,7 @@ async function startDaemon() {
     windowsHide: true,
     env: {
       ...stripProxyEnv(process.env),
-      TRAE_ENHANCER_UI_PORT: String(UI_PORT),
+      TRAEMETA_ENHANCER_UI_PORT: String(UI_PORT),
     },
   });
   child.unref();

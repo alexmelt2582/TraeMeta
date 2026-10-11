@@ -13,10 +13,10 @@ import {
   matchesProductExeName,
 } from "../src/lib/trae-locate.js";
 
-const EXE = "TRAE SOLO CN.exe";
+const EXE = "Trae CN.exe";
 const LOCAL = path.normalize("C:\\Users\\ZHD\\AppData\\Local");
-const LOCAL_EXE = path.join(LOCAL, "Programs", "TRAE SOLO CN", EXE);
-const D_EXE = path.normalize("D:\\Apps\\TRAE SOLO CN\\" + EXE);
+const LOCAL_EXE = path.join(LOCAL, "Programs", "Trae CN", EXE);
+const D_EXE = path.normalize("D:\\Apps\\Trae CN\\" + EXE);
 
 function fakeProbe({ files = [], processPaths = [], uninstall = [] } = {}) {
   const known = new Set(files.map((value) => path.normalize(value).toLowerCase()));
@@ -40,16 +40,16 @@ const ENV = { LOCALAPPDATA: LOCAL, APPDATA: "C:\\Users\\ZHD\\AppData\\Roaming" }
 
 test("a registry DisplayIcon is turned into a usable path", () => {
   assert.equal(
-    displayIconToExePath('"D:\\Apps\\TRAE SOLO CN\\TRAE SOLO CN.exe",0'),
-    path.normalize("D:\\Apps\\TRAE SOLO CN\\TRAE SOLO CN.exe"),
+    displayIconToExePath('"D:\\Apps\\Trae CN\\Trae CN.exe",0'),
+    path.normalize("D:\\Apps\\Trae CN\\Trae CN.exe"),
   );
   assert.equal(
-    displayIconToExePath("D:\\Apps\\TRAE SOLO CN.exe,0"),
-    path.normalize("D:\\Apps\\TRAE SOLO CN.exe"),
+    displayIconToExePath("D:\\Apps\\Trae CN.exe,0"),
+    path.normalize("D:\\Apps\\Trae CN.exe"),
   );
   assert.equal(
-    displayIconToExePath('"D:\\Apps\\TRAE SOLO CN.exe"'),
-    path.normalize("D:\\Apps\\TRAE SOLO CN.exe"),
+    displayIconToExePath('"D:\\Apps\\Trae CN.exe"'),
+    path.normalize("D:\\Apps\\Trae CN.exe"),
   );
   assert.equal(displayIconToExePath("D:\\Apps\\readme.txt,0"), null);
   assert.equal(displayIconToExePath(""), null);
@@ -73,7 +73,7 @@ test("an explicit argument wins over every other source", async () => {
   const result = await detectTraeExe({
     explicit: D_EXE,
     configured: LOCAL_EXE,
-    env: { ...ENV, TRAE_ENHANCER_TRAE_EXE: LOCAL_EXE },
+    env: { ...ENV, TRAEMETA_ENHANCER_TRAE_EXE: LOCAL_EXE },
     probe,
   });
   assert.equal(result.path, D_EXE);
@@ -84,7 +84,7 @@ test("the saved configuration is used when no argument is given", async () => {
   const probe = fakeProbe({ files: [D_EXE, LOCAL_EXE], processPaths: [LOCAL_EXE] });
   const result = await detectTraeExe({
     configured: D_EXE,
-    env: { ...ENV, TRAE_ENHANCER_TRAE_EXE: LOCAL_EXE },
+    env: { ...ENV, TRAEMETA_ENHANCER_TRAE_EXE: LOCAL_EXE },
     probe,
   });
   assert.equal(result.path, D_EXE);
@@ -94,7 +94,7 @@ test("the saved configuration is used when no argument is given", async () => {
 test("the environment variable is used before any probing", async () => {
   const probe = fakeProbe({ files: [D_EXE], processPaths: [D_EXE] });
   const result = await detectTraeExe({
-    env: { ...ENV, TRAE_ENHANCER_TRAE_EXE: D_EXE },
+    env: { ...ENV, TRAEMETA_ENHANCER_TRAE_EXE: D_EXE },
     probe,
   });
   assert.equal(result.source, "env");
@@ -110,7 +110,7 @@ test("a running TRAE process is the first probed source", async () => {
 test("the uninstall registry is used when no process is running", async () => {
   const probe = fakeProbe({
     files: [D_EXE],
-    uninstall: [{ DisplayName: "TRAE SOLO CN", InstallLocation: "D:\\Apps", DisplayIcon: `"${D_EXE}",0` }],
+    uninstall: [{ DisplayName: "Trae CN", InstallLocation: "D:\\Apps", DisplayIcon: `"${D_EXE}",0` }],
   });
   const result = await detectTraeExe({ env: ENV, probe });
   assert.equal(result.path, D_EXE);
@@ -125,9 +125,9 @@ test("well known directories are the last resort", async () => {
 });
 
 test("a failure still explains every probed location", async () => {
-  const probe = fakeProbe({ processPaths: ["D:\\ghost\\TRAE SOLO CN.exe"] });
+  const probe = fakeProbe({ processPaths: ["D:\\ghost\\Trae CN.exe"] });
   const result = await detectTraeExe({
-    configured: "D:\\missing\\TRAE SOLO CN.exe",
+    configured: "D:\\missing\\Trae CN.exe",
     env: ENV,
     probe,
   });
@@ -149,7 +149,7 @@ test("the same path is never probed twice", async () => {
   await detectTraeExe({
     explicit: D_EXE,
     configured: D_EXE,
-    env: { ...ENV, TRAE_ENHANCER_TRAE_EXE: D_EXE },
+    env: { ...ENV, TRAEMETA_ENHANCER_TRAE_EXE: D_EXE },
     probe,
   });
   const hits = probe.probed.filter(
@@ -199,12 +199,12 @@ test("exhaustive mode probes every source but keeps the same priority winner", a
   assert.equal(sources.has("candidate"), true);
 });
 
-test("a registry entry for the unrelated Trae CN IDE is ignored", async () => {
-  const traeCn = "C:\\Users\\ZHD\\AppData\\Local\\Programs\\Trae CN\\Trae CN.exe";
+test("a registry entry for the legacy TraeWork CN workspace is ignored", async () => {
+  const legacy = "C:\\Users\\ZHD\\AppData\\Local\\Programs\\TRAE SOLO CN\\TRAE SOLO CN.exe";
   const probe = fakeProbe({
-    files: [traeCn],
+    files: [legacy],
     uninstall: [
-      { DisplayName: "Trae CN", InstallLocation: "C:\\Users\\ZHD\\AppData\\Local\\Programs\\Trae CN", DisplayIcon: `"${traeCn}",0` },
+      { DisplayName: "TraeWork CN (User)", InstallLocation: "C:\\Users\\ZHD\\AppData\\Local\\Programs\\TRAE SOLO CN", DisplayIcon: `"${legacy}",0` },
     ],
   });
   const result = await detectTraeExe({ env: ENV, probe });
@@ -215,22 +215,23 @@ test("a registry entry for the unrelated Trae CN IDE is ignored", async () => {
   );
 });
 
-test("a registry entry that only matches on TRAE is not enough", () => {
-  assert.equal(isProductDisplayName("TRAE SOLO CN"), true);
-  assert.equal(isProductDisplayName("trae solo cn 1.2.3"), true);
-  assert.equal(isProductDisplayName("TraeWork CN (User)"), true);
-  assert.equal(isProductDisplayName("Trae CN"), false);
+test("the display name is matched strictly on the merged TRAE CN product", () => {
+  assert.equal(isProductDisplayName("TRAE CN (User)"), true);
+  assert.equal(isProductDisplayName("Trae CN"), true);
+  assert.equal(isProductDisplayName("TraeWork CN (User)"), false);
   assert.equal(isProductDisplayName("TraeCode CN (User)"), false);
+  assert.equal(isProductDisplayName("TRAE SOLO CN Enhancer 1.4.0"), false);
+  assert.equal(isProductDisplayName("TraeCode CN Enhancer 1.0.1"), false);
   assert.equal(isProductDisplayName("TRAE"), false);
   assert.equal(isProductDisplayName(undefined), false);
 });
 
-test("the real TraeWork CN entry on a non-default drive is found", async () => {
+test("a merged TRAE CN entry on a non-default drive is found through its DisplayIcon", async () => {
   const probe = fakeProbe({
     files: [D_EXE],
     uninstall: [
       {
-        DisplayName: "TraeWork CN (User)",
+        DisplayName: "TRAE CN (User)",
         InstallLocation: "D:\\Apps",
         DisplayIcon: `"${D_EXE}",0`,
       },
@@ -241,10 +242,10 @@ test("the real TraeWork CN entry on a non-default drive is found", async () => {
   assert.equal(result.source, "registry");
 });
 
-test("a TraeWork CN entry without a usable DisplayIcon falls back to InstallLocation", async () => {
+test("a TRAE CN entry without a usable DisplayIcon falls back to InstallLocation", async () => {
   const probe = fakeProbe({
     files: [D_EXE],
-    uninstall: [{ DisplayName: "TraeWork CN (User)", InstallLocation: "D:\\Apps\\TRAE SOLO CN" }],
+    uninstall: [{ DisplayName: "TRAE CN (User)", InstallLocation: "D:\\Apps\\Trae CN" }],
   });
   const result = await detectTraeExe({ env: ENV, probe });
   assert.equal(result.path, D_EXE);
@@ -275,17 +276,17 @@ test("an unrelated entry is ignored even when it lists an install location", asy
 });
 
 test("a registry DisplayIcon pointing at another executable is rejected", () => {
-  assert.equal(matchesProductExeName("C:\\x\\TRAE SOLO CN.exe"), true);
-  assert.equal(matchesProductExeName("C:\\x\\trae solo cn.EXE"), true);
-  assert.equal(matchesProductExeName("C:\\x\\Trae CN.exe"), false);
+  assert.equal(matchesProductExeName("C:\\x\\Trae CN.exe"), true);
+  assert.equal(matchesProductExeName("C:\\x\\TRAE SOLO CN.exe"), false);
+  assert.equal(matchesProductExeName("C:\\x\\TraeCode CN.exe"), false);
   assert.equal(matchesProductExeName(null), false);
 });
 
-test("a genuine TRAE SOLO CN registry entry is accepted", async () => {
+test("a genuine Trae CN registry entry is accepted", async () => {
   const probe = fakeProbe({
     files: [D_EXE],
     uninstall: [
-      { DisplayName: "TRAE SOLO CN", InstallLocation: "D:\\Apps", DisplayIcon: `"${D_EXE}",0` },
+      { DisplayName: "Trae CN", InstallLocation: "D:\\Apps", DisplayIcon: `"${D_EXE}",0` },
     ],
   });
   const result = await detectTraeExe({ env: ENV, probe });
@@ -295,8 +296,8 @@ test("a genuine TRAE SOLO CN registry entry is accepted", async () => {
 
 test("the installer-facing line carries an ascii source key, never a label", () => {
   assert.equal(
-    formatResolvedLine({ path: "D:\\Apps\\TRAE SOLO CN.exe", source: "process" }),
-    "D:\\Apps\\TRAE SOLO CN.exe\tprocess",
+    formatResolvedLine({ path: "D:\\Apps\\Trae CN.exe", source: "process" }),
+    "D:\\Apps\\Trae CN.exe\tprocess",
   );
   assert.equal(formatResolvedLine({ path: null, source: null }), "");
   assert.equal(formatResolvedLine(null), "");
@@ -307,11 +308,11 @@ test("the installer-facing line carries an ascii source key, never a label", () 
 
 test("the not-found help lists the probes and the command that fixes it", () => {
   const help = formatNotFoundHelp({
-    attempts: [{ source: "candidate", value: "C:\\x\\TRAE SOLO CN.exe", exists: false }],
+    attempts: [{ source: "candidate", value: "C:\\x\\Trae CN.exe", exists: false }],
     dataDir: "D:\\Me\\副业\\Trae多账号协同\\data",
   });
-  assert.match(help, /找不到 TRAE SOLO CN/);
+  assert.match(help, /找不到 Trae CN/);
   assert.match(help, /configure --trae-exe/);
   assert.match(help, /config\.json/);
-  assert.match(help, /C:\\x\\TRAE SOLO CN\.exe/);
+  assert.match(help, /C:\\x\\Trae CN\.exe/);
 });

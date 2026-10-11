@@ -145,7 +145,7 @@ export class AccountStore {
     const index = await readJsonFile(this.indexPath, { required: false });
     if (!index) return { schemaVersion: 1, accounts: [] };
     if (!Array.isArray(index.accounts)) {
-      throw new Error("TRAE enhancer account index is invalid");
+      throw new Error("Trae Meta account index is invalid");
     }
     return index;
   }
