@@ -178,7 +178,7 @@ npm run build:installer
 AI 应告诉你产物路径，例如：
 
 ```text
-✅ 验收包已生成：dist/installer/TraeEnhancer-Setup-1.2.0.exe
+✅ 验收包已生成：dist/installer/TraeMeta-Setup-1.2.0.exe
 请验收。
 ```
 

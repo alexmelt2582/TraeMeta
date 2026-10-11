@@ -18,7 +18,7 @@
 import path from "node:path";
 
 export const AUTOSTART_VBS_NAME = "daemon-autostart.vbs";
-export const AUTOSTART_SHORTCUT_NAME = "TRAE SOLO CN Enhancer";
+export const AUTOSTART_SHORTCUT_NAME = "Trae Meta";
 
 /**
  * The user-facing entry point for a packaged build.
@@ -110,7 +110,7 @@ export function launchVbsPath(projectRoot) {
  * its own resolved path instead.
  */
 export const LAUNCH_MISSING_EXE_MESSAGE =
-  "TRAE SOLO CN Enhancer cannot start: TraeEnhancer.exe was not found next to this script. "
+  "Trae Meta cannot start: TraeMeta.exe was not found next to this script. "
   + "Re-extract the package, or restore the file if antivirus removed it.";
 
 /**
@@ -178,7 +178,7 @@ export function buildAutostartVbs({
       return;
     }
     lines.push(`If ${condition} Then`);
-    lines.push(`  MsgBox ${vbsQuote(missingExeMessage)} & vbCrLf & vbCrLf & nodeExe, 48, "TRAE SOLO CN Enhancer"`);
+    lines.push(`  MsgBox ${vbsQuote(missingExeMessage)} & vbCrLf & vbCrLf & nodeExe, 48, "Trae Meta"`);
     lines.push(`  WScript.Quit ${exitCode}`);
     lines.push("End If");
   };
@@ -222,7 +222,7 @@ export function buildShortcutScript({
   shortcutPath,
   vbsPath,
   workingDirectory,
-  description = "TRAE SOLO CN Enhancer background service",
+  description = "Trae Meta background service",
 }) {
   const wscript = "System32\\wscript.exe";
   return [

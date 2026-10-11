@@ -25,7 +25,7 @@ import path from "node:path";
 import { downloadToFile } from "./http.js";
 import { isTimeoutError } from "./net-diagnostics.js";
 
-export const INSTALLER_DIR_NAME = "TraeEnhancer-Update";
+export const INSTALLER_DIR_NAME = "TraeMeta-Update";
 /** Generous on purpose: the asset is tens of megabytes, a slow link is not an error. */
 export const INSTALLER_DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -186,7 +186,7 @@ async function verifyInstallerFile(filePath, installer) {
  * that starts it does not live to see it finish, and a child that died with its
  * parent would leave the machine with the service stopped and nothing to bring
  * it back. Restoring the service is the installer's own job, see the upgrade
- * branch in `scripts/win/trae-enhancer.iss`.
+ * branch in `scripts/win/trae-meta.iss`.
  *
  * `windowsHide` is deliberately not set. It is a `STARTUPINFO` `SW_HIDE` hint,
  * and the installer is a GUI program whose first window is exactly the wizard we

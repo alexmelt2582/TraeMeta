@@ -1,4 +1,4 @@
-# Tray host for the TRAE SOLO CN Enhancer background service.
+# Tray host for the Trae Meta background service.
 #
 # This file is intentionally pure ASCII. Windows PowerShell 5.1 decodes .ps1
 # files as ANSI unless they carry a UTF-8 BOM, and a BOM breaks other tooling,
@@ -14,7 +14,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$mutex = New-Object System.Threading.Mutex($false, 'Local\TraeSoloCnEnhancerTray')
+$mutex = New-Object System.Threading.Mutex($false, 'Local\TraeMetaTray')
 if (-not $mutex.WaitOne(0)) {
   Write-Output 'another tray host is already running'
   exit 0

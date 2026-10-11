@@ -50,7 +50,7 @@ function callbackPage({ tone, title, message, redirect = "" }) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TRAE SOLO CN Enhancer</title>
+  <title>Trae Meta</title>
   <style>
     :root { color-scheme: light dark; }
     * { box-sizing: border-box; }
@@ -91,7 +91,7 @@ function callbackPage({ tone, title, message, redirect = "" }) {
     <div class="badge">${escapeHtml(title)}</div>
     <h1>${escapeHtml(title)}</h1>
     <p>${escapeHtml(message)}</p>
-    <footer>TRAE SOLO CN Enhancer 本地回调服务</footer>
+    <footer>Trae Meta 本地回调服务</footer>
   </main>
   ${redirect}
 </body>
@@ -127,7 +127,9 @@ export function buildVerificationUri(context, callbackUrl, loginTraceId, codeCha
 
   const parts = [];
   appendQuery(parts, "login_version", "1", false);
-  appendQuery(parts, "auth_from", "solo", false);
+  // The merged client is a full IDE, not the old SOLO_Lite workspace: the real
+  // client emits auth_from="trae", and a mismatched source is rejected.
+  appendQuery(parts, "auth_from", "trae", false);
   appendQuery(parts, "login_channel", "native_ide", false);
   appendQuery(parts, "plugin_version", context.pluginVersion);
   appendQuery(parts, "auth_type", "local", false);
@@ -257,7 +259,7 @@ async function requestLoginGuidance(loginTraceId, accountApi) {
     try {
       const response = await requestJson(`${origin}${GUIDANCE_PATH}`, {
         body: { loginTraceID: loginTraceId, login_trace_id: loginTraceId },
-        headers: { "user-agent": "TRAE SOLO CN Enhancer/0.1" },
+        headers: { "user-agent": "Trae Meta/0.1" },
       });
       if (!response.ok) {
         lastError = safeRemoteError(response);
@@ -401,8 +403,8 @@ function buildStorageRoot(context, exchange, userInfo, callback) {
     loginHost: callback.loginHost,
     loginRegion,
     loginTraceID: callback.loginTraceId,
-    platformId: "trae_solo_cn",
-    platformName: "TRAE SOLO CN",
+    platformId: "trae_code_cn",
+    platformName: "Trae CN",
     authClientId: context.clientId,
     authDomain: context.authDomain,
     apiHost: exchange.origin,
@@ -436,8 +438,8 @@ function buildStorageRoot(context, exchange, userInfo, callback) {
     loginRegion,
     loginTraceID: callback.loginTraceId,
     platform: {
-      platformId: "trae_solo_cn",
-      platformName: "TRAE SOLO CN",
+      platformId: "trae_code_cn",
+      platformName: "Trae CN",
       authClientId: context.clientId,
       authDomain: context.authDomain,
     },
@@ -463,11 +465,11 @@ export async function openExternal(url) {
   try {
     await execFileAsync(
       "powershell.exe",
-      ["-NoProfile", "-Command", "Start-Process -FilePath $env:TRAE_ENHANCER_OPEN_URL"],
+      ["-NoProfile", "-Command", "Start-Process -FilePath $env:TRAEMETA_ENHANCER_OPEN_URL"],
       {
         timeout: 10000,
         windowsHide: true,
-        env: { ...process.env, TRAE_ENHANCER_OPEN_URL: url },
+        env: { ...process.env, TRAEMETA_ENHANCER_OPEN_URL: url },
       },
     );
     return "powershell";
@@ -475,11 +477,11 @@ export async function openExternal(url) {
     try {
       await execFileAsync(
         "cmd.exe",
-        ["/d", "/s", "/c", 'start "" "%TRAE_ENHANCER_OPEN_URL%"'],
+        ["/d", "/s", "/c", 'start "" "%TRAEMETA_ENHANCER_OPEN_URL%"'],
         {
           timeout: 10000,
           windowsHide: true,
-          env: { ...process.env, TRAE_ENHANCER_OPEN_URL: url },
+          env: { ...process.env, TRAEMETA_ENHANCER_OPEN_URL: url },
         },
       );
       return "cmd";
@@ -746,7 +748,7 @@ export class TraeOAuthManager {
       callbackPage({
         tone: "success",
         title: "授权成功",
-        message: "登录信息已传回 TRAE SOLO CN Enhancer，可以关闭此页面。",
+        message: "登录信息已传回 Trae Meta，可以关闭此页面。",
       }),
     );
     this.closeSessionServer(session);

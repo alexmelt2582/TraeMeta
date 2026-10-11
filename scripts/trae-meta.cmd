@@ -9,9 +9,9 @@ set "ARGS=%*"
 if "%ARGS%"=="" set "ARGS=start"
 
 set "ENHANCER_EXE="
-if exist "dist\TraeEnhancer.exe" set "ENHANCER_EXE=dist\TraeEnhancer.exe"
+if exist "dist\TraeMeta.exe" set "ENHANCER_EXE=dist\TraeMeta.exe"
 if defined ENHANCER_EXE goto runexe
-if exist "TraeEnhancer.exe" set "ENHANCER_EXE=TraeEnhancer.exe"
+if exist "TraeMeta.exe" set "ENHANCER_EXE=TraeMeta.exe"
 if defined ENHANCER_EXE goto runexe
 goto runnode
 

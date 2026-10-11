@@ -229,7 +229,7 @@ test("reloading the panel re-injects it instead of restarting TRAE", () => {
 });
 
 test("a pushed update notification lights the tab dot", () => {
-  assert.ok(source.includes('const UPDATE_AVAILABLE_EVENT = "trae-enhancer:update-available"'));
+  assert.ok(source.includes('const UPDATE_AVAILABLE_EVENT = "traemeta:update-available"'));
   const body = functionBody("function handleUpdateAvailable\\(\\)");
   assert.ok(body.includes("updateTabDot.hidden = false"));
   assert.ok(

@@ -24,7 +24,7 @@ function moduleRelativeRoot() {
 }
 
 function resolveAppRoot() {
-  const fromEnv = process.env.TRAE_ENHANCER_APP_ROOT;
+  const fromEnv = process.env.TRAEMETA_ENHANCER_APP_ROOT;
   if (typeof fromEnv === "string" && fromEnv.trim()) return path.resolve(fromEnv.trim());
   if (injectedRoot) return path.resolve(injectedRoot);
   return moduleRelativeRoot();

@@ -19,7 +19,7 @@ export const GITHUB_API_ORIGIN = "https://api.github.com";
 export const DEFAULT_UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 /** The one asset the in-app upgrade will run. */
-export const INSTALLER_ASSET_PREFIX = "TraeEnhancer-Setup-";
+export const INSTALLER_ASSET_PREFIX = "TraeMeta-Setup-";
 const DIGEST_PREFIX = "sha256:";
 const GITHUB_DOWNLOAD_PATTERN = /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\//i;
 

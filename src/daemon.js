@@ -104,32 +104,33 @@ import {
   rollbackAuthSnapshot,
   waitForStorageIdentity,
 } from "./lib/storage-transaction.js";
+import { attachWebSocketJson } from "./lib/ws.js";
 
-const CDP_PORT = parsePort(process.env.TRAE_ENHANCER_CDP_PORT, DEFAULT_CDP_PORT);
-const UI_PORT = parsePort(process.env.TRAE_ENHANCER_UI_PORT, DEFAULT_UI_PORT);
-const DATA_DIR = process.env.TRAE_ENHANCER_DATA_DIR || DEFAULT_DATA_DIR;
-const STORAGE_PATH = process.env.TRAE_ENHANCER_STORAGE_PATH || DEFAULT_STORAGE_PATH;
+const CDP_PORT = parsePort(process.env.TRAEMETA_ENHANCER_CDP_PORT, DEFAULT_CDP_PORT);
+const UI_PORT = parsePort(process.env.TRAEMETA_ENHANCER_UI_PORT, DEFAULT_UI_PORT);
+const DATA_DIR = process.env.TRAEMETA_ENHANCER_DATA_DIR || DEFAULT_DATA_DIR;
+const STORAGE_PATH = process.env.TRAEMETA_ENHANCER_STORAGE_PATH || DEFAULT_STORAGE_PATH;
 /**
  * Resolved at startup from the configuration file and live detection. The
  * daemon must still run when TRAE is absent, because check-in and keep-alive
  * work from stored credentials; only the flows that restart TRAE need a path.
  */
-let TRAE_EXE = process.env.TRAE_ENHANCER_TRAE_EXE || DEFAULT_TRAE_EXE;
+let TRAE_EXE = process.env.TRAEMETA_ENHANCER_TRAE_EXE || DEFAULT_TRAE_EXE;
 const API_TOKEN_PATH = path.join(DATA_DIR, "api-token");
 const LEGACY_TRANSACTION_DIR = path.join(DATA_DIR, "transactions");
 const FAKE_LOGOUT_SESSION_PATH = path.join(DATA_DIR, "fake-logout", "session.json");
 const MAX_REQUEST_BODY_BYTES = 32 * 1024 * 1024;
-const AUTO_KEEPALIVE_ENABLED = process.env.TRAE_ENHANCER_AUTO_KEEPALIVE !== "0";
+const AUTO_KEEPALIVE_ENABLED = process.env.TRAEMETA_ENHANCER_AUTO_KEEPALIVE !== "0";
 const AUTO_KEEPALIVE_INTERVAL_MS = parseDuration(
-  process.env.TRAE_ENHANCER_KEEPALIVE_INTERVAL_MS,
+  process.env.TRAEMETA_ENHANCER_KEEPALIVE_INTERVAL_MS,
   DEFAULT_KEEPALIVE_INTERVAL_MS,
 );
 const AUTO_KEEPALIVE_RETRY_INTERVAL_MS = parseDuration(
-  process.env.TRAE_ENHANCER_KEEPALIVE_RETRY_INTERVAL_MS,
+  process.env.TRAEMETA_ENHANCER_KEEPALIVE_RETRY_INTERVAL_MS,
   DEFAULT_KEEPALIVE_RETRY_INTERVAL_MS,
 );
 const AUTO_KEEPALIVE_SWEEP_INTERVAL_MS = parseDuration(
-  process.env.TRAE_ENHANCER_KEEPALIVE_SWEEP_INTERVAL_MS,
+  process.env.TRAEMETA_ENHANCER_KEEPALIVE_SWEEP_INTERVAL_MS,
   30 * 60 * 1000,
 );
 
@@ -218,7 +219,7 @@ function jsonResponse(response, status, body) {
     "content-length": Buffer.byteLength(payload),
     "cache-control": "no-store",
     "access-control-allow-origin": "*",
-    "access-control-allow-headers": "content-type,x-trae-enhancer-token",
+    "access-control-allow-headers": "content-type,x-traemeta-enhancer-token",
     "access-control-allow-methods": "GET,POST,OPTIONS",
   });
   response.end(payload);
@@ -237,19 +238,19 @@ async function readRequestBody(request) {
 }
 
 function requireApiToken(request, apiToken) {
-  return request.headers["x-trae-enhancer-token"] === apiToken;
+  return request.headers["x-traemeta-enhancer-token"] === apiToken;
 }
 
 /**
  * Event name the injected panel listens for. Both sides must agree on it.
  */
-const ACCOUNTS_UPDATED_EVENT = "trae-enhancer:accounts-updated";
+const ACCOUNTS_UPDATED_EVENT = "traemeta:accounts-updated";
 
 /**
  * Tells the injected panel that a newer release was found, so an already-open
  * About tab can show its dot without waiting to be reopened.
  */
-const UPDATE_AVAILABLE_EVENT = "trae-enhancer:update-available";
+const UPDATE_AVAILABLE_EVENT = "traemeta:update-available";
 
 /**
  * Tells the injected panel how far the in-app upgrade has got.
@@ -259,7 +260,7 @@ const UPDATE_AVAILABLE_EVENT = "trae-enhancer:update-available";
  * The payload carries the whole install state, so a panel that was opened halfway
  * through can paint itself from one event instead of needing history.
  */
-const UPDATE_PROGRESS_EVENT = "trae-enhancer:update-progress";
+const UPDATE_PROGRESS_EVENT = "traemeta:update-progress";
 
 /**
  * One-off line the panel shows to the user.
@@ -269,7 +270,7 @@ const UPDATE_PROGRESS_EVENT = "trae-enhancer:update-progress";
  * otherwise be invisible. Nothing is stored — a panel that is not open simply
  * misses it, which is why the panel opens itself when this arrives.
  */
-const NOTICE_EVENT = "trae-enhancer:notice";
+const NOTICE_EVENT = "traemeta:notice";
 
 /**
  * Tells the injected panel that account state changed on disk.
@@ -663,9 +664,9 @@ async function stopTraeForSwitch() {
   if (!(await traeExecutableExists(TRAE_EXE))) {
     throw new Error(
       [
-        `TRAE SOLO CN 的可执行文件不存在：${TRAE_EXE}`,
+        `Trae CN 的可执行文件不存在：${TRAE_EXE}`,
         "请先指定一次路径，之后会被记住：",
-        '  TraeEnhancer.exe configure --trae-exe "D:\\路径\\TRAE SOLO CN.exe"',
+        '  TraeMeta.exe configure --trae-exe "D:\\路径\\Trae CN.exe"',
       ].join("\n"),
     );
   }
@@ -676,7 +677,7 @@ async function stopTraeForSwitch() {
     await delay(700);
   }
   if ((await findTraeProcessIds(TRAE_EXE)).length) {
-    throw new Error("TRAE SOLO CN did not remain fully stopped");
+    throw new Error("Trae CN did not remain fully stopped");
   }
 }
 
@@ -1207,7 +1208,7 @@ async function route(request, response, apiToken, cdpClient, oauthManager, fakeL
   if (request.method === "OPTIONS") {
     response.writeHead(204, {
       "access-control-allow-origin": "*",
-      "access-control-allow-headers": "content-type,x-trae-enhancer-token",
+      "access-control-allow-headers": "content-type,x-traemeta-enhancer-token",
       "access-control-allow-methods": "GET,POST,OPTIONS",
       "access-control-max-age": "600",
     });
@@ -2217,10 +2218,10 @@ async function main() {
     );
   } else {
     console.warn(
-      "[trae] 未找到 TRAE SOLO CN：账号切换与登录流程不可用；签到与保活不受影响。",
+      "[trae] 未找到 Trae CN：账号切换与登录流程不可用；签到与保活不受影响。",
     );
     console.warn(
-      '[trae] 请运行 configure --trae-exe "D:\\路径\\TRAE SOLO CN.exe" 指定一次，之后会记住。',
+      '[trae] 请运行 configure --trae-exe "D:\\路径\\Trae CN.exe" 指定一次，之后会记住。',
     );
   }
 
@@ -2291,7 +2292,7 @@ async function main() {
     autoCheckinStartTimer = null;
     autoCheckinTimer = null;
 
-    if (process.env.TRAE_ENHANCER_AUTO_CHECKIN === "0") return;
+    if (process.env.TRAEMETA_ENHANCER_AUTO_CHECKIN === "0") return;
 
     let config;
     try {
@@ -2477,7 +2478,7 @@ async function main() {
     accountStore,
     storagePath: STORAGE_PATH,
     exePath: TRAE_EXE,
-    openBrowser: process.env.TRAE_ENHANCER_OPEN_BROWSER !== "0",
+    openBrowser: process.env.TRAEMETA_ENHANCER_OPEN_BROWSER !== "0",
     onAccountSaved: (account, metadata) =>
       synchronizeSavedAccount(account, { source: metadata?.source || "oauth" }),
   });
@@ -2508,6 +2509,67 @@ async function main() {
         error: error instanceof Error ? error.message : String(error),
       });
     });
+  });
+
+  /**
+   * 合并版 Trae CN 的 workbench CSP 禁止 `connect-src http:`，但放行 `ws:`，
+   * 注入面板因此无法用 fetch 访问本机守护进程。每条 WebSocket JSON 消息在这里
+   * 被还原成一个合成 HTTP 请求，复用同一套 `route()`，再把状态码与响应体回传，
+   * 面板侧看到的 API 形状与原来的 HTTP 完全一致。
+   */
+  attachWebSocketJson(server, "/panel", (msg, reply) => {
+    const body =
+      msg.body === undefined || msg.body === null
+        ? undefined
+        : typeof msg.body === "string"
+          ? msg.body
+          : JSON.stringify(msg.body);
+    const request = {
+      method: String(msg.method || "POST").toUpperCase(),
+      url: String(msg.path || "/"),
+      headers:
+        msg && msg.token ? { "x-traemeta-enhancer-token": String(msg.token) } : {},
+      [Symbol.asyncIterator]: async function* () {
+        if (body !== undefined) yield Buffer.from(body, "utf8");
+      },
+    };
+    let responded = false;
+    const response = {
+      writeHead(status) {
+        this.status = status;
+      },
+      end(payload) {
+        if (responded) return;
+        responded = true;
+        const text =
+          typeof payload === "string" ? payload : Buffer.from(payload).toString("utf8");
+        let data = text;
+        try {
+          data = JSON.parse(text);
+        } catch {
+          // 非 JSON 响应体保持原文，交给面板侧自行判断。
+        }
+        reply({
+          id: msg.id,
+          ok: this.status >= 200 && this.status < 300,
+          status: this.status,
+          data,
+          error: this.status >= 400 ? text : undefined,
+        });
+      },
+    };
+    route(request, response, apiToken, cdpClient, oauthManager, fakeLogoutManager).catch(
+      (error) => {
+        if (responded) return;
+        responded = true;
+        reply({
+          id: msg.id,
+          ok: false,
+          status: 500,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
+    );
   });
 
   await new Promise((resolve, reject) => {

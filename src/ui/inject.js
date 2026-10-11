@@ -1,30 +1,30 @@
 (() => {
   "use strict";
 
-  const ROOT_ID = "trae-enhancer-root";
-  const STYLE_ID = "trae-enhancer-style";
+  const ROOT_ID = "traemeta-root";
+  const STYLE_ID = "traemeta-style";
   const API_BASE = "__API_BASE__";
   const API_TOKEN = "__API_TOKEN__";
   const APP_VERSION = "__APP_VERSION__";
   // Dispatched by the daemon through CDP after any account state change. The
   // panel is a pure view, so this is how a background sweep reaches an already
   // open panel without a polling loop on this side.
-  const ACCOUNTS_UPDATED_EVENT = "trae-enhancer:accounts-updated";
+  const ACCOUNTS_UPDATED_EVENT = "traemeta:accounts-updated";
   // Dispatched by the daemon when its scheduled check finds a newer release, so
   // the About tab can show the dot without the panel ever polling GitHub (the
   // workbench CSP would block that request anyway).
-  const UPDATE_AVAILABLE_EVENT = "trae-enhancer:update-available";
+  const UPDATE_AVAILABLE_EVENT = "traemeta:update-available";
   // Dispatched by the daemon while an in-app upgrade is downloading or verifying.
   // The upgrade request stays open for the whole download, so without this the
   // panel could only show one frozen line until it finished.
-  const UPDATE_PROGRESS_EVENT = "trae-enhancer:update-progress";
+  const UPDATE_PROGRESS_EVENT = "traemeta:update-progress";
   // Dispatched by the daemon on behalf of another process that has something to
   // tell the user, such as the launcher failing to bring TRAE to the front. It is
   // one-shot: the panel may well be closed when it arrives, so the handler opens
   // it before showing the toast.
-  const NOTICE_EVENT = "trae-enhancer:notice";
+  const NOTICE_EVENT = "traemeta:notice";
 
-  window.__traeEnhancerCleanup?.();
+  window.__traeMetaCleanup?.();
   document.getElementById(ROOT_ID)?.remove();
   document.getElementById(STYLE_ID)?.remove();
 
@@ -109,6 +109,10 @@
       gap: 10px;
       border-bottom: 1px solid var(--te-border);
       flex: 0 0 auto;
+      /* The header doubles as the drag handle for the whole widget. Buttons
+         inside it keep their own pointer cursor. */
+      cursor: grab;
+      user-select: none;
     }
 
     #${ROOT_ID} .te-title {
@@ -2087,7 +2091,7 @@
   function loginSessionSeen(sessionId) {
     if (!sessionId) return false;
     try {
-      return localStorage.getItem(`trae-enhancer:login:${sessionId}`) === "seen";
+      return localStorage.getItem(`traemeta:login:${sessionId}`) === "seen";
     } catch {
       return false;
     }
@@ -2096,24 +2100,69 @@
   function markLoginSessionSeen(sessionId) {
     if (!sessionId) return;
     try {
-      localStorage.setItem(`trae-enhancer:login:${sessionId}`, "seen");
+      localStorage.setItem(`traemeta:login:${sessionId}`, "seen");
     } catch {
       // Local storage is optional; the in-memory guard still prevents repeats.
     }
   }
 
-  function api(path, options = {}) {
-    return fetch(`${API_BASE}${path}`, {
-      ...options,
-      headers: {
-        "content-type": "application/json",
-        "x-trae-enhancer-token": API_TOKEN,
-        ...(options.headers || {}),
-      },
-    }).then(async (response) => {
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        const error = new Error(data.error || `HTTP ${response.status}`);
+  /**
+   * 合并版 Trae CN 的 workbench CSP 禁止 `connect-src http:`，但放行 `ws:`，
+   * 面板因此只能通过 WebSocket 访问守护进程。下面的 API 形状与原来的 HTTP 完全
+   * 一致，只有最底下的传输层由 fetch 换成了 ws。
+   */
+  let rpcSocket = null;
+  let rpcOpen = null;
+  let rpcId = 0;
+  const rpcPending = new Map();
+
+  function panicRpc(error) {
+    const entries = [...rpcPending.values()];
+    rpcPending.clear();
+    for (const entry of entries) entry.reject(error);
+  }
+
+  function openRpcSocket() {
+    return new Promise((resolve, reject) => {
+      let ws;
+      try {
+        ws = new WebSocket(`${API_BASE.replace(/^http:/, "ws:")}/panel`);
+      } catch (error) {
+        rpcSocket = null;
+        panicRpc(new Error(`无法连接增强服务 (${API_BASE})`));
+        reject(error);
+        return;
+      }
+      ws.onopen = () => {
+        rpcSocket = ws;
+        resolve(ws);
+      };
+      ws.onerror = () => {
+        rpcSocket = null;
+        panicRpc(new Error(`无法连接增强服务 (${API_BASE})`));
+        reject(new Error("websocket error"));
+      };
+      ws.onclose = () => {
+        rpcSocket = null;
+        panicRpc(new Error("增强服务通道已断开"));
+      };
+      ws.onmessage = (event) => {
+        let msg;
+        try {
+          msg = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+        const entry = rpcPending.get(msg.id);
+        if (!entry) return;
+        rpcPending.delete(msg.id);
+        if (msg.ok) {
+          entry.resolve(msg.data ?? {});
+          return;
+        }
+        // 优先用响应体里的 error 字段：msg.error 是原始 JSON 文本，直接抛给用户
+        // 会变成一长串花括号。
+        const error = new Error(msg.data?.error || msg.error || `HTTP ${msg.status}`);
         /**
          * The daemon's own error codes are carried through so a caller can act on
          * what happened instead of on the sentence describing it. `install-in-flight`
@@ -2121,10 +2170,50 @@
          * a failure, and matching Chinese text to tell them apart would break the
          * moment either string is reworded.
          */
-        if (typeof data.code === "string") error.code = data.code;
-        throw error;
+        if (typeof msg.data?.code === "string") error.code = msg.data.code;
+        entry.reject(error);
+      };
+    });
+  }
+
+  function sendRpc(msg) {
+    if (rpcSocket && rpcSocket.readyState === 1) {
+      rpcSocket.send(JSON.stringify(msg));
+      return;
+    }
+    if (!rpcOpen) {
+      rpcOpen = openRpcSocket()
+        .catch(() => undefined)
+        .finally(() => {
+          rpcOpen = null;
+        });
+    }
+    rpcOpen.then((ws) => {
+      try {
+        if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
+      } catch {
+        // The socket died between the check and the send.
       }
-      return data;
+    });
+  }
+
+  /**
+   * 刻意不加超时：`/api/accounts/switch` 要等守护进程走完「停 Trae → 清除本机
+   * 登录信息 → 重启 Trae → 等 CDP」整个过程，远超过任何合理的固定超时值。连接
+   * 真的断了会由 onclose/onerror 统一 reject，这才是正确的失败信号。
+   */
+  function api(path, options = {}) {
+    const body = options.body === undefined ? undefined : String(options.body);
+    return new Promise((resolve, reject) => {
+      const id = ++rpcId;
+      rpcPending.set(id, { resolve, reject });
+      sendRpc({
+        id,
+        path,
+        method: String(options.method || "GET").toUpperCase(),
+        body,
+        token: API_TOKEN,
+      });
     });
   }
 
@@ -3483,7 +3572,7 @@
        */
       status =
         "安装向导已经打开。如果它没有出现在 TRAE 前面，请到任务栏点一下" +
-        "「TRAE SOLO CN Enhancer 安装」窗口。安装期间助手服务会短暂停止，" +
+        "「Trae Meta 安装」窗口。安装期间助手服务会短暂停止，" +
         "向导结束后回到面板点「重载界面」即可。";
       showClose = true;
     } else if (state.stage === "failed") {
@@ -3860,8 +3949,10 @@
     await new Promise((resolve) => setTimeout(resolve, 800));
     while (Date.now() < deadline) {
       try {
-        const response = await fetch(`${API_BASE}/api/health`, { cache: "no-store" });
-        if (response.ok) return true;
+        // 通过 WS 探测：合并版 CSP 禁止 `connect-src http:`，fetch 会被拦截；守护
+        // 进程重启期间 socket 会断开并被上面的 onclose 拒绝，恢复后这里就通了。
+        await api("/api/health");
+        return true;
       } catch {
         // Still down; keep waiting.
       }
@@ -3898,7 +3989,7 @@
    * the daemon already pushes after its own refresh, so asking again here would
    * loop. The 150ms debounce collapses a burst of changes into one repaint.
    *
-   * The listener is removed by `__traeEnhancerCleanup`, because the daemon
+   * The listener is removed by `__traeMetaCleanup`, because the daemon
    * re-injects this script every time CDP reconnects.
    */
   let accountsUpdatedPending = false;
@@ -4171,7 +4262,7 @@
     if (result.message) return result.message;
     const messages = {
       preparing: "正在备份当前账号...",
-      stopping: "正在安全关闭 TRAE SOLO CN...",
+      stopping: "正在安全关闭 Trae CN...",
       clearing: "正在切换到登录页...",
       starting: "正在重新打开 TRAE 登录页...",
       awaiting_login: "请在 TRAE 登录页扫码登录新账号，登录后会自动保存。",
@@ -4451,7 +4542,7 @@
             password: password.input.value,
           }),
         });
-        downloadTransfer(result, "TRAE-SOLO-CN-accounts.json");
+        downloadTransfer(result, "TraeMeta-accounts.json");
         showToast(`已导出 ${result.count} 个账号（已加密）`);
         closeTransferDialog();
       };
@@ -4514,6 +4605,9 @@
 
   function openPanel() {
     panel.classList.add("open");
+    // Anchored per open: the widget may have been dragged since the last time, so
+    // the side with room for the panel is not a constant.
+    positionPanel();
     adoptionError = null;
     // The daemon adopts the signed-in account on its own now, so this is only a
     // fallback for the moment the panel is opened. Kept because it is the one path
@@ -4564,7 +4658,134 @@
     panel.classList.remove("open");
   }
 
+  /**
+   * Moving the widget, and putting it back where it was left.
+   *
+   * It was pinned to the bottom-right corner, which on a wide window lands on top
+   * of the editor's own floating controls with no way to get it out of the way.
+   * The icon and the panel header both drag the whole widget, and the position is
+   * stored so a reload returns it. Nothing here is required for the panel to work:
+   * with no stored position the original corner is used unchanged.
+   */
+  const POSITION_KEY = "traemeta:widget-position";
+  // Movement smaller than this is still a click; without it every click would
+  // jitter the widget by a pixel or two and be remembered as a move.
+  const DRAG_THRESHOLD = 4;
+  let dragState = null;
+  let ignoreNextFabClick = false;
+
+  function clampToViewport(left, top) {
+    const width = root.offsetWidth || 42;
+    const height = root.offsetHeight || 42;
+    return {
+      left: Math.min(Math.max(0, left), Math.max(0, window.innerWidth - width)),
+      top: Math.min(Math.max(0, top), Math.max(0, window.innerHeight - height)),
+    };
+  }
+
+  /** Places the widget; `left` and `right` must never both be set, or the fixed
+   * box stretches across the window instead of moving. */
+  function moveWidget(left, top) {
+    const next = clampToViewport(left, top);
+    root.style.left = `${next.left}px`;
+    root.style.top = `${next.top}px`;
+    root.style.right = "auto";
+    root.style.bottom = "auto";
+    return next;
+  }
+
+  function storedWidgetPosition() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(POSITION_KEY) ?? "null");
+      return Number.isFinite(saved?.left) && Number.isFinite(saved?.top) ? saved : null;
+    } catch {
+      // Unreadable means "never moved"; it must not take the panel down.
+      return null;
+    }
+  }
+
+  const savedWidgetPosition = storedWidgetPosition();
+  if (savedWidgetPosition) moveWidget(savedWidgetPosition.left, savedWidgetPosition.top);
+
+  /** Anchors the panel to whichever side of the icon has room for it, so a widget
+   * dragged to the left or top edge does not open its panel past the window. */
+  function positionPanel() {
+    const rect = root.getBoundingClientRect();
+    panel.style.left = "";
+    panel.style.right = "";
+    panel.style.top = "";
+    panel.style.bottom = "";
+    // Anchored to the side that actually has room, measured against the panel's
+    // own size. `right: 0` grows the panel leftward from the icon's right edge, so
+    // it needs that much space to the left; `left: 0` mirrors it to the right.
+    panel.style[rect.right >= panel.offsetWidth ? "right" : "left"] = "0";
+    // Vertical works the same way: `bottom: 50px` sits the panel above the icon,
+    // so the room it needs is the distance from the viewport top down to the
+    // icon's bottom edge. Near the top the panel flips below instead.
+    panel.style[rect.bottom >= panel.offsetHeight ? "bottom" : "top"] = "50px";
+  }
+
+  function wireDrag(handle, canStart) {
+    handle.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 || (canStart && !canStart(event))) return;
+      const rect = root.getBoundingClientRect();
+      dragState = {
+        x: event.clientX,
+        y: event.clientY,
+        left: rect.left,
+        top: rect.top,
+        moved: false,
+      };
+      handle.setPointerCapture(event.pointerId);
+    });
+    handle.addEventListener("pointermove", (event) => {
+      if (!dragState) return;
+      const dx = event.clientX - dragState.x;
+      const dy = event.clientY - dragState.y;
+      // Below the threshold this is still a click, so nothing moves yet.
+      if (!dragState.moved && Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD) return;
+      dragState.moved = true;
+      moveWidget(dragState.left + dx, dragState.top + dy);
+    });
+    const finish = (event) => {
+      if (!dragState) return;
+      const moved = dragState.moved;
+      dragState = null;
+      if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+      if (!moved) return;
+      if (handle === fab) ignoreNextFabClick = true;
+      const rect = root.getBoundingClientRect();
+      const next = moveWidget(rect.left, rect.top);
+      try {
+        localStorage.setItem(POSITION_KEY, JSON.stringify(next));
+      } catch {
+        // Remembering the spot is a convenience; blocked or full storage must not
+        // turn a drag into a visible error.
+      }
+    };
+    handle.addEventListener("pointerup", finish);
+    handle.addEventListener("pointercancel", finish);
+  }
+
+  wireDrag(fab);
+  // Buttons in the header keep their own click, so drags starting on one are left
+  // alone — otherwise the close button would become a drag handle.
+  wireDrag(header, (event) => !event.target.closest("button, a, input, select"));
+
+  // A window that shrank can leave the widget past the new edge, so it is pulled
+  // back. The stored value is left as it is: the window may grow again.
+  window.addEventListener("resize", () => {
+    if (!root.style.left) return;
+    moveWidget(root.getBoundingClientRect().left, root.getBoundingClientRect().top);
+  });
+
   fab.addEventListener("click", () => {
+    // A drag ends with a click on the button it started on, and that click must
+    // not also toggle the panel.
+    if (ignoreNextFabClick) {
+      ignoreNextFabClick = false;
+      return;
+    }
     if (panel.classList.contains("open")) closePanel();
     else openPanel();
   });
@@ -4773,7 +4994,7 @@
     }
   });
 
-  window.__traeEnhancerCleanup = () => {
+  window.__traeMetaCleanup = () => {
     clearTimeout(toastTimer);
     clearTimeout(accountsUpdatedTimer);
     window.removeEventListener(ACCOUNTS_UPDATED_EVENT, handleAccountsUpdated);
@@ -4788,7 +5009,7 @@
     stopFakeLogoutPolling();
     root.remove();
     style.remove();
-    delete window.__traeEnhancerCleanup;
+    delete window.__traeMetaCleanup;
   };
 
   resumeFakeLogout().catch(() => {});

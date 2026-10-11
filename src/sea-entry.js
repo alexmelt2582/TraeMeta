@@ -6,7 +6,7 @@
  * single executable cannot load sibling script files from disk.
  *
  * Without a switch the executable behaves exactly like `scripts/service.js`,
- * so `TraeEnhancer.exe status` and `node scripts/service.js status` agree. The
+ * so `TraeMeta.exe status` and `node scripts/service.js status` agree. The
  * service CLI re-enters this executable with the launcher switch when it needs
  * to start TRAE, which keeps a single user-facing command surface.
  *

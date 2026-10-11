@@ -5,7 +5,7 @@ import { parseIcubesValue } from "./trae-crypto.js";
 import { isDeviceIdentity, mintDeviceIdentity } from "./device-identity.js";
 import { normalizeEmail } from "./trae-storage.js";
 
-const DEFAULT_CLIENT_ID = "en1oxy7wnw8j9n";
+const DEFAULT_CLIENT_ID = "ono9krqynydwx5";
 const DEFAULT_APP_VERSION = "3.5.54";
 
 function firstString(...values) {
@@ -31,13 +31,18 @@ async function readProductInfo(exePath) {
   const root = await readJson(productPath);
   if (!root) return {};
   const appType = firstString(root.quality, "stable").toLowerCase();
-  const authConfig = root.iCubeApp?.authConfig?.SOLO || {};
+  const authConfig = root.iCubeApp?.authConfig?.TRAE || {};
   return {
     clientId: firstString(authConfig[appType], authConfig.stable, ...Object.values(authConfig)),
     pluginVersion: firstString(root.tronBuildVersion, root.buildVersion, root.productVersion),
     appVersion: firstString(root.appVersion, root.productVersion, root.version),
     appType,
+    // The merged client serves its account API from `bootConfig.iCube.normal`;
+    // `bootConfig.account.trae.normal` is the older SOLO-era host and stays only
+    // as a fallback for a product.json that predates the merge.
     accountApi: firstString(
+      root.bootConfig?.iCube?.normal,
+      root.bootConfig?.iCube?.NORMAL,
       root.bootConfig?.account?.trae?.normal,
       root.bootConfig?.account?.trae?.NORMAL,
       "https://api.trae.cn",
@@ -104,7 +109,7 @@ export function buildDeviceInfo(context, publicKeyPem) {
   return {
     DeviceID: context.deviceId,
     MachineID: context.machineId,
-    PlatformCode: "SOLO_PC",
+    PlatformCode: "IDE_PC",
     DeviceType: "PC",
     DeviceName: context.deviceName,
     DeviceModel: context.deviceBrand,

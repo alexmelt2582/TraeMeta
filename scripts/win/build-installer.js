@@ -24,16 +24,16 @@ const PROJECT_ROOT = path.resolve(HERE, "..", "..");
 const DIST_DIR = path.join(PROJECT_ROOT, "dist");
 const PORTABLE_DIR = path.join(DIST_DIR, "portable");
 const OUTPUT_DIR = path.join(DIST_DIR, "installer");
-const ISS_PATH = path.join(HERE, "trae-enhancer.iss");
+const ISS_PATH = path.join(HERE, "trae-meta.iss");
 const LANGUAGE_PATH = path.join(HERE, "ChineseSimplified.isl");
-const EXE_NAME = "TraeEnhancer.exe";
-const OUTPUT_BASE = "TraeEnhancer-Setup";
+const EXE_NAME = "TraeMeta.exe";
+const OUTPUT_BASE = "TraeMeta-Setup";
 
 /** Files the installer claims to package. Missing any of them is a hard error. */
 const REQUIRED_PAYLOAD = [
   EXE_NAME,
   "README.md",
-  path.join("scripts", "trae-enhancer.cmd"),
+  path.join("scripts", "trae-meta.cmd"),
   path.join("scripts", "tray.ps1"),
 ];
 

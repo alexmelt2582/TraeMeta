@@ -1,4 +1,4 @@
-﻿; TRAE SOLO CN Enhancer - Windows 安装包配置
+﻿; Trae Meta - Windows 安装包配置
 ;
 ; 由 scripts/win/build-installer.js 编译。所有路径都由构建脚本以 /D 传入，
 ; 本文件不假设任何机器相关的目录。
@@ -6,10 +6,10 @@
 ; 设计要点：
 ;   - PrivilegesRequired=lowest，免管理员，装在 %LOCALAPPDATA%\Programs 下；
 ;   - 不禁用目录页，用户可自选安装位置；
-;   - 自定义页紧跟在目录页之后，让用户确认 TRAE SOLO CN 主程序位置；
+;   - 自定义页紧跟在目录页之后，让用户确认 Trae CN 主程序位置；
 ;   - 检测在 Pascal 内用注册表与文件存在性完成，不解析子进程输出：
 ;     子进程 stdout 是 UTF-8，而安装程序按系统 ANSI 解码，中文路径会损坏；
-;   - 保存用户选择时把路径作为**命令行参数**传给 TraeEnhancer.exe configure，
+;   - 保存用户选择时把路径作为**命令行参数**传给 TraeMeta.exe configure，
 ;     命令行是 Unicode，不存在解码问题。
 
 #ifndef AppVersion
@@ -22,14 +22,14 @@
   #error OutputDir must be supplied by the build script
 #endif
 #ifndef OutputBaseFilename
-  #define OutputBaseFilename "TraeEnhancer-Setup"
+  #define OutputBaseFilename "TraeMeta-Setup"
 #endif
 
-#define ProductName "TRAE SOLO CN Enhancer"
-#define ProductExe "TraeEnhancer.exe"
+#define ProductName "Trae Meta"
+#define ProductExe "TraeMeta.exe"
 
 [Setup]
-AppId={{8F1C3E7A-2B54-4D9E-9C31-6A0F5B7D2E84}
+AppId={{A5F0F3DA-D503-4C13-9561-384B09F14D85}
 AppName={#ProductName}
 AppVersion={#AppVersion}
 AppVerName={#ProductName} {#AppVersion}
@@ -65,19 +65,19 @@ Name: "autostart"; Description: "登录时自动启动后台服务（用于定�
 [Files]
 Source: "{#StageRoot}\{#ProductExe}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#StageRoot}\README.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#StageRoot}\scripts\trae-enhancer.cmd"; DestDir: "{app}\scripts"; Flags: ignoreversion
+Source: "{#StageRoot}\scripts\trae-meta.cmd"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "{#StageRoot}\scripts\tray.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "{#StageRoot}\scripts\launch-hidden.vbs"; DestDir: "{app}\scripts"; Flags: ignoreversion
 
 [Icons]
 ; 两个启动项都指向隐藏启动器，而不是可执行文件：可执行文件是控制台子系统程序，
 ; 直接启动必定弹出黑窗口。停止项保留控制台是刻意的——用户点了停止，应当看到结果。
-Name: "{group}\{#ProductName}"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\scripts\launch-hidden.vbs"""; WorkingDir: "{app}"; Comment: "启动 TRAE SOLO CN 与增强面板"
+Name: "{group}\{#ProductName}"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\scripts\launch-hidden.vbs"""; WorkingDir: "{app}"; Comment: "启动 Trae CN 与增强面板"
 Name: "{group}\停止后台服务"; Filename: "{app}\{#ProductExe}"; Parameters: "stop"; WorkingDir: "{app}"
 Name: "{userdesktop}\{#ProductName}"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\scripts\launch-hidden.vbs"""; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{sys}\wscript.exe"; Parameters: """{app}\scripts\launch-hidden.vbs"""; WorkingDir: "{app}"; Description: "立即启动 TRAE SOLO CN 与增强面板"; Flags: nowait postinstall skipifsilent
+Filename: "{sys}\wscript.exe"; Parameters: """{app}\scripts\launch-hidden.vbs"""; WorkingDir: "{app}"; Description: "立即启动 Trae CN 与增强面板"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
 Filename: "{app}\{#ProductExe}"; Parameters: "tray-stop"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; RunOnceId: "StopTray"
@@ -91,11 +91,11 @@ Type: filesandordirs; Name: "{app}\logs"
 
 [Code]
 const
-  TraeExeName = 'TRAE SOLO CN.exe';
-  ProductMarker = 'TRAE SOLO CN';
-  { TRAE SOLO CN 实际写入的 DisplayName 是 "TraeWork CN (User)"，不含
-    ProductMarker；只认产品名会漏掉真实安装，最终退回 C 盘候选目录。 }
-  ProductMarkerAlias = 'TRAEWORK CN';
+  TraeExeName = 'Trae CN.exe';
+  { 合并版写入的 DisplayName 是 "TRAE CN (User)"。MatchesProductName 会先把
+    DisplayName 转成大写再比较，所以这里必须是全大写；只匹配裸 "TRAE" 会命中
+    同机的其它 Trae 产品（旧 TraeWork CN、TraeCode CN），因此保留 " CN" 后缀。 }
+  ProductMarker = 'TRAE CN';
 
 var
   TraePage: TInputFileWizardPage;
@@ -113,13 +113,13 @@ var
   Value: String;
 begin
   Result := '';
-  if RegQueryStringValue(HKCU, 'Software\TraeSoloCnEnhancer', 'TraeExe', Value) then
+  if RegQueryStringValue(HKCU, 'Software\TraeMeta', 'TraeExe', Value) then
     Result := Value;
 end;
 
 function SaveTraePath(const Path: String): Boolean;
 begin
-  Result := RegWriteStringValue(HKCU, 'Software\TraeSoloCnEnhancer', 'TraeExe', Path);
+  Result := RegWriteStringValue(HKCU, 'Software\TraeMeta', 'TraeExe', Path);
 end;
 
 function MatchesProductExeName(const Path: String): Boolean;
@@ -150,18 +150,18 @@ begin
   if MatchesProductExeName(Value) then Result := Value;
 end;
 
-{ 产品名是次级判据：接受 TRAE SOLO CN 与真实写入的 TraeWork CN，但不接受裸
-  "TRAE"——那会命中另一个产品 "Trae CN"（AI IDE），导致后续所有重启 TRAE
-  的流程失败。TraeCode CN 两个名字都不含，同样被排除。 }
+{ 产品名是次级判据，只接受合并版 "TRAE CN"。旧的 TraeWork CN 工作区与
+  TraeCode CN 构建都在 "Trae" 和 "CN" 之间插了一个词，不会被命中；裸 "TRAE"
+  同样不匹配。 }
 function MatchesProductName(const DisplayName: String): Boolean;
 var
   Value: String;
 begin
   Value := Uppercase(DisplayName);
-  Result := (Pos(ProductMarker, Value) > 0) or (Pos(ProductMarkerAlias, Value) > 0);
+  Result := Pos(ProductMarker, Value) > 0;
 end;
 
-{ 主判据是 DisplayIcon 的文件名正好为 TRAE SOLO CN.exe：它与盘符和产品名都
+{ 主判据是 DisplayIcon 的文件名正好为 Trae CN.exe：它与盘符和产品名都
   无关，装在 D 盘也能命中。产品名匹配只在 DisplayIcon 不可用时用作退路。 }
 function ConsiderUninstallKey(const RootKey: Integer; const SubKey: String; var Found: String): Boolean;
 var
@@ -240,14 +240,14 @@ var
   Index: Integer;
 begin
   Result := '';
-  Candidates[0] := ExpandConstant('{localappdata}\Programs\TRAE SOLO CN\') + TraeExeName;
-  Candidates[1] := ExpandConstant('{localappdata}\TRAE SOLO CN\') + TraeExeName;
+  Candidates[0] := ExpandConstant('{localappdata}\Programs\Trae CN\') + TraeExeName;
+  Candidates[1] := ExpandConstant('{localappdata}\Trae CN\') + TraeExeName;
   Candidates[2] := ExpandConstant('{localappdata}\Programs\') + TraeExeName;
-  Candidates[3] := ExpandConstant('{commonpf}\TRAE SOLO CN\') + TraeExeName;
+  Candidates[3] := ExpandConstant('{commonpf}\Trae CN\') + TraeExeName;
   Candidates[4] := ExpandConstant('{commonpf}\') + TraeExeName;
-  Candidates[5] := ExpandConstant('{commonpf32}\TRAE SOLO CN\') + TraeExeName;
+  Candidates[5] := ExpandConstant('{commonpf32}\Trae CN\') + TraeExeName;
   Candidates[6] := ExpandConstant('{commonpf32}\') + TraeExeName;
-  Candidates[7] := ExpandConstant('{userappdata}\TRAE SOLO CN\') + TraeExeName;
+  Candidates[7] := ExpandConstant('{userappdata}\Trae CN\') + TraeExeName;
   for Index := 0 to 7 do
   begin
     if FileExists(Candidates[Index]) then
@@ -261,9 +261,9 @@ end;
 function DescribeSource(const Path: String): String;
 begin
   if Path = '' then
-    Result := '未自动找到 TRAE SOLO CN，请点击“浏览”手动选择主程序。'
+    Result := '未自动找到 Trae CN，请点击“浏览”手动选择主程序。'
   else
-    Result := '已自动检测到 TRAE SOLO CN，可直接继续；如果不对请点击“浏览”修改。';
+    Result := '已自动检测到 Trae CN，可直接继续；如果不对请点击“浏览”修改。';
 end;
 
 procedure UpdateTraeStatus();
@@ -276,7 +276,7 @@ begin
   else if not FileExists(Candidate) then
     TraeStatusLabel.Caption := '未找到这个文件，请重新选择。'
   else if not MatchesProductExeName(Candidate) then
-    TraeStatusLabel.Caption := '文件名必须是 TRAE SOLO CN.exe，请重新选择。'
+    TraeStatusLabel.Caption := '文件名必须是 Trae CN.exe，请重新选择。'
   else
     TraeStatusLabel.Caption := '路径有效。';
 end;
@@ -302,7 +302,7 @@ begin
     (CompareText(ExtractFileExt(Candidate), '.exe') = 0) and
     MatchesProductExeName(Candidate);
   if not Result then
-    MsgBox('请选择名为 TRAE SOLO CN.exe 的主程序。', mbError, MB_OK);
+    MsgBox('请选择名为 Trae CN.exe 的主程序。', mbError, MB_OK);
 end;
 
 procedure InitializeWizard();
@@ -326,8 +326,8 @@ begin
 
   TraePage := CreateInputFilePage(
     wpSelectDir,
-    'TRAE SOLO CN 位置',
-    '确认 TRAE SOLO CN 主程序的位置',
+    'Trae CN 位置',
+    '确认 Trae CN 主程序的位置',
     '安装程序会自动检测，检测不到或位置不对时请点击“浏览”手动选择。'
   );
   TraePage.Add(
@@ -417,7 +417,7 @@ begin
 
   if not Exec(ExistingExe, 'stop', ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin
-    Result := '无法停止正在运行的 TRAE SOLO CN Enhancer 服务，请先手动停止后重试。';
+    Result := '无法停止正在运行的 Trae Meta 服务，请先手动停止后重试。';
     Exit;
   end;
   if ResultCode <> 0 then
@@ -443,9 +443,9 @@ begin
     (not MatchesProductExeName(SelectedPath)) then
   begin
     if WizardSilent then
-      Log('TRAE SOLO CN.exe was not selected; configure it later with configure --trae-exe')
+      Log('Trae CN.exe was not selected; configure it later with configure --trae-exe')
     else
-      MsgBox('没有可保存的 TRAE SOLO CN 路径，请稍后运行 configure --trae-exe。', mbInformation, MB_OK);
+      MsgBox('没有可保存的 Trae CN 路径，请稍后运行 configure --trae-exe。', mbInformation, MB_OK);
     Exit;
   end;
 
@@ -453,17 +453,17 @@ begin
   if not Exec(ExePath, Params, ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin
     if WizardSilent then
-      Log('unable to launch TraeEnhancer configure')
+      Log('unable to launch TraeMeta configure')
     else
       MsgBox('写入 TRAE 路径失败，可稍后手动运行：' + #13#10 +
-        'TraeEnhancer.exe configure --trae-exe "<路径>"', mbInformation, MB_OK);
+        'TraeMeta.exe configure --trae-exe "<路径>"', mbInformation, MB_OK);
   end
   else if ResultCode <> 0 then
   begin
     if WizardSilent then
-      Log('TraeEnhancer configure exited with code ' + IntToStr(ResultCode))
+      Log('TraeMeta configure exited with code ' + IntToStr(ResultCode))
     else
-      MsgBox('TraeEnhancer 未能保存 TRAE 路径（退出码 ' + IntToStr(ResultCode) + '）。', mbInformation, MB_OK);
+      MsgBox('TraeMeta 未能保存 TRAE 路径（退出码 ' + IntToStr(ResultCode) + '）。', mbInformation, MB_OK);
   end;
 
   SaveTraePath(SelectedPath);

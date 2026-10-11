@@ -22,18 +22,18 @@ const injectSource = read("src/ui/inject.js");
 const RELEASE = {
   tag_name: "v1.2.0",
   name: "v1.2.0",
-  html_url: "https://github.com/alexmelt2582/traedabby/releases/tag/v1.2.0",
+  html_url: "https://github.com/alexmelt2582/TraeMeta/releases/tag/v1.2.0",
   published_at: "2026-09-25T02:00:00Z",
   body: "## 本次更新\n\n- 支持检查新版本\n",
 };
 
 const INSTALLER_ASSET = {
-  name: "TraeEnhancer-Setup-1.2.0.exe",
+  name: "TraeMeta-Setup-1.2.0.exe",
   state: "uploaded",
   size: 23829760,
   digest: "sha256:5e41d960e52560712f63e1ecaa1d45e2ed0cd798bc40ccb68ae47a85fb3b27ee",
   browser_download_url:
-    "https://github.com/alexmelt2582/traedabby/releases/download/v1.2.0/TraeEnhancer-Setup-1.2.0.exe",
+    "https://github.com/alexmelt2582/TraeMeta/releases/download/v1.2.0/TraeMeta-Setup-1.2.0.exe",
 };
 
 test("only a three part version is parsed", () => {
@@ -68,7 +68,7 @@ test("a release payload is reduced to the fields the panel renders", () => {
     url: RELEASE.html_url,
     publishedAt: "2026-09-25T02:00:00.000Z",
     installer: {
-      name: "TraeEnhancer-Setup-1.2.0.exe",
+      name: "TraeMeta-Setup-1.2.0.exe",
       url: INSTALLER_ASSET.browser_download_url,
       size: 23829760,
       digest: "5e41d960e52560712f63e1ecaa1d45e2ed0cd798bc40ccb68ae47a85fb3b27ee",
@@ -83,11 +83,11 @@ test("a release without a downloadable installer is still reported, with the rea
   const release = normalizeRelease({ ...RELEASE, assets: [] });
   assert.equal(release.version, "1.2.0");
   assert.equal(release.installer, null);
-  assert.match(release.installerError, /没有提供 TraeEnhancer-Setup-1\.2\.0\.exe/);
+  assert.match(release.installerError, /没有提供 TraeMeta-Setup-1\.2\.0\.exe/);
 });
 
 test("the installer asset has to be the exact name for this version", () => {
-  const renamed = { ...INSTALLER_ASSET, name: "TraeEnhancer-Setup-1.1.0.exe" };
+  const renamed = { ...INSTALLER_ASSET, name: "TraeMeta-Setup-1.1.0.exe" };
   const selection = selectInstallerAsset({ assets: [renamed] }, "1.2.0");
   assert.equal(selection.asset, undefined);
   assert.match(selection.reason, /没有提供/);
@@ -134,7 +134,7 @@ test("two assets with the same name are refused rather than guessed between", ()
 test("an installer hosted anywhere but github.com is refused", () => {
   for (const url of [
     "https://example.com/x.exe",
-    "http://github.com/alexmelt2582/traedabby/releases/download/v1.2.0/x.exe",
+    "http://github.com/alexmelt2582/TraeMeta/releases/download/v1.2.0/x.exe",
     "file:///C:/Windows/System32/calc.exe",
   ]) {
     const selection = selectInstallerAsset(
@@ -165,8 +165,8 @@ test("the release address must be a github.com release page", () => {
   // The release page is the identity the panel shows for a version, so a tampered
   // payload must not be able to make this helper claim it came from anywhere else.
   const rejected = [
-    "https://example.com/alexmelt2582/traedabby/releases/tag/v1.2.0",
-    "http://github.com/alexmelt2582/traedabby/releases/tag/v1.2.0",
+    "https://example.com/alexmelt2582/TraeMeta/releases/tag/v1.2.0",
+    "http://github.com/alexmelt2582/TraeMeta/releases/tag/v1.2.0",
     "https://github.com/alexmelt2582",
     "file:///C:/Windows/System32/calc.exe",
     "javascript:alert(1)",
@@ -189,7 +189,7 @@ test("an unreadable publish date becomes null rather than an invalid date", () =
 test("the latest release is read from the repository's own endpoint", async () => {
   const calls = [];
   const release = await fetchLatestRelease({
-    repo: "alexmelt2582/traedabby",
+    repo: "alexmelt2582/TraeMeta",
     requestJsonImpl: async (url, options) => {
       calls.push({ url, options });
       return { ok: true, status: 200, json: RELEASE };
@@ -197,7 +197,7 @@ test("the latest release is read from the repository's own endpoint", async () =
   });
   assert.equal(release.version, "1.2.0");
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, `${GITHUB_API_ORIGIN}/repos/alexmelt2582/traedabby/releases/latest`);
+  assert.equal(calls[0].url, `${GITHUB_API_ORIGIN}/repos/alexmelt2582/TraeMeta/releases/latest`);
   // The default of `requestJson` is POST, so a GET has to be asked for explicitly.
   assert.equal(calls[0].options.method, "GET");
 });
@@ -206,7 +206,7 @@ test("an HTTP failure keeps a usable reason instead of returning no update", asy
   await assert.rejects(
     () =>
       fetchLatestRelease({
-        repo: "alexmelt2582/traedabby",
+        repo: "alexmelt2582/TraeMeta",
         requestJsonImpl: async () => ({ ok: false, status: 403, json: null }),
       }),
     /HTTP 403.*频率限制/,
@@ -214,7 +214,7 @@ test("an HTTP failure keeps a usable reason instead of returning no update", asy
   await assert.rejects(
     () =>
       fetchLatestRelease({
-        repo: "alexmelt2582/traedabby",
+        repo: "alexmelt2582/TraeMeta",
         requestJsonImpl: async () => ({ ok: false, status: 500, json: null }),
       }),
     /HTTP 500/,
@@ -225,7 +225,7 @@ test("a payload that cannot be parsed fails the check rather than reporting the 
   await assert.rejects(
     () =>
       fetchLatestRelease({
-        repo: "alexmelt2582/traedabby",
+        repo: "alexmelt2582/TraeMeta",
         requestJsonImpl: async () => ({ ok: true, status: 200, json: { tag_name: "nightly" } }),
       }),
     /无法解析/,

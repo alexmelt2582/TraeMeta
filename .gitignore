@@ -1,6 +1,4 @@
 data/
-.git-data/
-.git-meta/
 logs/
 node_modules/
 dist/

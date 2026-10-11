@@ -21,7 +21,7 @@
 
 ## 产品定位
 
-本仓库是 Windows 上 `TRAE SOLO CN` 的本地增强助手。
+本仓库是 Windows 上 `Trae CN` 的本地增强助手。
 它不得修改官方安装包或 `app.asar`。
 它通过 Chrome DevTools Protocol 与正在运行的 Electron 渲染进程通信，
 并将所有账号数据保留在本机。
@@ -31,7 +31,7 @@ TRAE 自身文件它唯一允许写入的是用户级 `User/settings.json`，
 
 ## 账号模型
 
-- 账号切换复用与 WorkDaddy 相同的共享 TRAE user-data 目录。
+- 账号切换复用与官方客户端相同的共享 TRAE user-data 目录。
 - 备份只包含 TRAE 认证状态，而不是整个 user-data 目录。
 - 认证快照必须包含账号维度的 `iCube*` 键，以及与之匹配的 device-key/usertag 记录。
 - 工作区、设置、扩展、窗口状态等非认证键必须保留。
@@ -58,7 +58,7 @@ TRAE 自身文件它唯一允许写入的是用户级 `User/settings.json`，
 - 当 Cockpit Tools 探测无法判定（`unknown`）时，签到仍会执行，但拒绝凭据轮换，
   并跳过 keep-alive。两条路径现在都只在到期时轮换，因此拒绝正是消除剩余重叠的机制。
 - 注入的面板是 `data/accounts/index.json` 的纯视图。它绝不能自行推导签到状态；
-  每次状态变化后由守护进程通过 CDP 推送 `trae-enhancer:accounts-updated`，面板在该
+  每次状态变化后由守护进程通过 CDP 推送 `traemeta:accounts-updated`，面板在该
   事件及打开时重新读取。不做任何轮询。
 - 打开面板会请求守护进程对账（`POST /api/accounts/panel-open`）。
   该调用是幂等的：已在服务器签到的账号按已签到记录，不会重复领取奖励。
@@ -72,7 +72,7 @@ TRAE 自身文件它唯一允许写入的是用户级 `User/settings.json`，
 
 - 本地服务只绑定 `127.0.0.1`。
 - 绝不记录或暴露访问令牌、刷新令牌、cookie、私钥或完整认证快照。
-- 只管理可执行文件路径和 user-data 目录与所配置的 TRAE SOLO CN 安装匹配的进程。
+- 只管理可执行文件路径和 user-data 目录与所配置的 Trae CN 安装匹配的进程。
 - 绝不关闭所有 Electron 进程，也不使用宽泛的按进程名终止。
 - 源码文件和 JSON 数据使用无 BOM 的 UTF-8。
 - 后台监督进程只*启动*守护进程。它从不终止任何东西，因此完全不需要 kill 路径。
@@ -82,7 +82,7 @@ TRAE 自身文件它唯一允许写入的是用户级 `User/settings.json`，
 - 项目目录可能包含非 ASCII 字符。绝不把该路径写进 `.cmd`、`.vbs` 或 `.ps1`
   源码文件：通过 COM（UTF-16）创建快捷方式，并让生成的脚本在运行时从自身位置
   解析项目根目录。
-- `scripts/trae-enhancer.cmd`、`scripts/tray.ps1`、`scripts/launch-hidden.vbs` 以及
+- `scripts/trae-meta.cmd`、`scripts/tray.ps1`、`scripts/launch-hidden.vbs` 以及
   所有生成的自动启动脚本必须保持纯 ASCII 且无 BOM。请依靠 `src/lib/autostart.js`
   中的 `assertAscii` 来强制这一点，并把中文显示字符串放到 `data/tray-config.json`
   （UTF-8）中。
@@ -91,9 +91,8 @@ TRAE 自身文件它唯一允许写入的是用户级 `User/settings.json`，
 
 ## 运行时不变式
 
-- Git 元数据存放在 `.git-meta`；请使用
-  `git --git-dir=.git-meta --work-tree=. ...`。
-- 默认回环服务是 `http://127.0.0.1:47834`；CDP 默认为 `127.0.0.1:9334`。
+- 本仓库使用标准 `.git` 目录；直接运行 `git` 命令即可，无需 `--git-dir`。
+- 默认回环服务是 `http://127.0.0.1:47837`；CDP 默认为 `127.0.0.1:9337`。
 - 签到每 `config.checkin.intervalMinutes`（15/30/60/120，默认 30）扫查一次，并且
   每个 Asia/Shanghai 天最多领取一次。`config.checkin.auto` 只禁用这些自动扫查：
   打开面板和 `POST /api/checkin/run` 是用户动作，绝不会被它拦。
@@ -138,7 +137,7 @@ TRAE 自身文件它唯一允许写入的是用户级 `User/settings.json`，
   在组装便携版时把它写进 `dist/portable/scripts/`，安装器再从那里打包。这里写的
   `scripts/launch-hidden.vbs` 一律指安装后的目录结构；在仓库里找不到它是正常的，
   不要为了「补上缺失文件」而手写一份。
-- `scripts/win/trae-enhancer.iss` 必须打包 `scripts/launch-hidden.vbs`；指向一个
+- `scripts/win/trae-meta.iss` 必须打包 `scripts/launch-hidden.vbs`；指向一个
   安装器从未复制过的文件的启动快捷方式注定失效。
 - `src/lib/app-paths.js` 是唯一允许读取 `import.meta` 的模块。Node 22
   单可执行应用程序只接受 CommonJS 入口，而 esbuild 在该输出格式下会把
@@ -153,18 +152,18 @@ TRAE 自身文件它唯一允许写入的是用户级 `User/settings.json`，
   可执行文件必须能应答 `status`。跳过这些检查的构建不得被报告为可用。
 - `npm run build:installer` 打包便携输出，并在该输出缺失或不完整时必须失败；
   它本身从不构建可执行文件。
-- `scripts/win/trae-enhancer.iss` 包含中文字面量，因此必须保持带 BOM 的 UTF-8；
+- `scripts/win/trae-meta.iss` 包含中文字面量，因此必须保持带 BOM 的 UTF-8；
   构建脚本在缺失时补加 BOM。无 BOM 的脚本会被 ISCC 按 ANSI 读取，字面量会变成乱码。
 - `scripts/win/ChineseSimplified.isl` 是第三方翻译，按原样使用；绝不重写其字节。
 - 安装器绝不从子进程管道读回路径。Node 写 UTF-8，而安装器用系统 ANSI 代码页
   解码管道，任何非 ASCII 路径都会损坏。检测在安装器内部通过注册表和文件检查完成，
   所选路径作为命令行参数*传给*可执行文件，这种方式对 Unicode 安全。
-- TRAE 的注册表检测以 `DisplayIcon` 的文件名是否为 `TRAE SOLO CN.exe` 为准，
-  产品名只是次级判据（`TRAE SOLO CN` 或 `TraeWork CN`）。真实安装写入的
-  DisplayName 是 `TraeWork CN (User)`，只认产品名会静默漏掉它、退回 C 盘候选
-  目录，使装在其它盘的 TRAE 检测不到；而放宽到裸 `TRAE` 会选中无关的
-  "Trae CN" IDE，破坏所有重启 TRAE 的流程。安装器与运行时必须用同一套判据，
-  注册表预筛选也不得把真实条目挡在匹配之前。
+- TRAE 的注册表检测以 `DisplayIcon` 的文件名是否为 `Trae CN.exe` 为准，
+  产品名只是次级判据，且严格等于合并版的 `Trae CN`。真实安装写入的 DisplayName
+  是 `TRAE CN (User)`，装在非默认盘时只能靠 `DisplayIcon` 命中。放宽到裸 `TRAE`
+  会同时命中同机的旧 `TraeWork CN` 工作区与 `TraeCode CN` 构建，选中就必然是错的、
+  会破坏所有重启 TRAE 的流程。安装器与运行时必须用同一套判据，注册表预筛选也不得
+  把真实条目挡在匹配之前。
 - 卸载必须询问是否保留用户数据。`data\` 存放账号快照和 API token，删除它不可逆，
   绝不能隐式进行。
 
@@ -173,7 +172,7 @@ TRAE 自身文件它唯一允许写入的是用户级 `User/settings.json`，
 - 安装器构建的安装是按用户的（`PrivilegesRequired=lowest`），位于
   `%LOCALAPPDATA%\Programs`，目录页已启用，因此可以修改位置。
 - 所选 TRAE 路径通过
-  `TraeEnhancer.exe configure --trae-exe <path>` 持久化，该命令在写入
+  `TraeMeta.exe configure --trae-exe <path>` 持久化，该命令在写入
   `data/config.json` 前会验证文件是否存在。
 - 安装器必须在删除文件前移除登录自启动并停止服务（`[UninstallRun]`），否则会留下
   一个从已删除目录运行的监督进程。
@@ -231,14 +230,14 @@ TRAE 自身文件它唯一允许写入的是用户级 `User/settings.json`，
   这不是猜测：发布的构建在该分支上记录日志 `update#ctor - manual checks only;
   automatic updates are disabled by user preference` 且从不安排检查，而 `default`
   会每 `update.interval`（60）分钟安排一次。证据在
-  `%APPDATA%\TRAE SOLO CN\logs\<stamp>\main.log`。
+  `%APPDATA%\Trae CN\logs\<stamp>\main.log`。
 - `update.enableWindowsBackgroundUpdates` 已经默认为 false，本构建中
   `extensions.autoUpdate` 不存在。不要添加不产生任何改变的设置。
 - 该文件是 JSONC。通过 `src/lib/trae-settings.js` 以文本方式编辑——只定向拼接一个
   值——绝不采用解析后再序列化，那会删除注释并重新格式化 TRAE 或用户放进去的内容。
 - 之前的记录保存在 `data/config.json`（`traeUpdate.previousMode`），因此
   "允许自动更新" 恢复的是原来的值，而不是假定该项缺失。
-- 首次写入前，该文件被复制为 `settings.json.trae-enhancer.bak`，写失败时恢复。
+- 首次写入前，该文件被复制为 `settings.json.traemeta.bak`，写失败时恢复。
   半写状态的设置文件必须不可能出现。
 - 重复写同样的值不会产生写入，因此守护进程重启不会反复触碰 TRAE 的设置文件。
 - 此处的改动在 TRAE 下次启动时生效。绝不要把它说成即时生效。
@@ -249,7 +248,7 @@ TRAE 自身文件它唯一允许写入的是用户级 `User/settings.json`，
 
 - 检查更新只读 `api.github.com/repos/<repo>/releases/latest`，并且永远只是提示。
   只有用户点「立即升级」才会下载和安装；后台检查绝不会自行下载，更不会安装。
-- 升级包按文件名精确匹配 `TraeEnhancer-Setup-<version>.exe`。必须 `state=uploaded`、
+- 升级包按文件名精确匹配 `TraeMeta-Setup-<version>.exe`。必须 `state=uploaded`、
   `size` 为正整数、`digest` 以 `sha256:` 开头、下载地址在 `github.com`。任一不满足
   就带着"缺哪一项"的理由拒绝，绝不降级为跳过校验照下。
 - 校验用 asset 自带的 `digest`，不再下载 `SHA256SUMS.txt`：先比字节数、再比 sha256。
@@ -257,7 +256,7 @@ TRAE 自身文件它唯一允许写入的是用户级 `User/settings.json`，
 - 下载走 `src/lib/http.js` 的 `downloadToFile`，与 `requestJson` 共用同一套
   dispatcher 判定，因此配了代理也不会被这条二进制请求绕开。它边写边算 sha256，
   所有失败路径都删除半成品，`maxBytes` 让超大的文件在写盘途中就被中止。
-- 下载落在 `%LOCALAPPDATA%\Temp\TraeEnhancer-Update\`，绝不进 `data\`。安装程序会
+- 下载落在 `%LOCALAPPDATA%\Temp\TraeMeta-Update\`，绝不进 `data\`。安装程序会
   杀掉下载它的守护进程，所以临时文件不能在进程内清理：改为下次守护进程启动时扫
   一遍（`cleanupInstallerDirectory`）。删除失败只记日志不报错——正在运行的那个
   安装程序通常正锁着它。
@@ -272,12 +271,12 @@ TRAE 自身文件它唯一允许写入的是用户级 `User/settings.json`，
   需要隐藏。`test/app-installer.test.js` 会断言这一项为 `undefined`。
 - 向导不会浮到 TRAE 前面，这是 Windows 前台锁而不是 bug：只有拥有前台窗口的进程
   才能把前台交出去，后台服务拉起的向导只能闪任务栏。面板在 `installing` 阶段必须
-  写明"向导可能不在最前面，请到任务栏找「TRAE SOLO CN Enhancer 安装」"，
+  写明"向导可能不在最前面，请到任务栏找「Trae Meta 安装」"，
   否则用户会以为升级什么都没做，然后再点一次「立即升级」。
 - `PrepareToInstall` 会停掉旧服务，所以任何覆盖安装都必须在 `ssPostInstall` 里补
   一次 `daemon`——静默时 `[Run]` 整段被跳过，交互时结束页的勾选框也可能被取消，
   两者都不能依赖。重复调用是安全的（`daemon` 子命令先探健康检查）。
-- 面板必须为安装进度推送 `trae-enhancer:update-progress`，并在打开时从
+- 面板必须为安装进度推送 `traemeta:update-progress`，并在打开时从
   `GET /api/update` 的 `install` 字段恢复。下载在用户那一次请求里完成，请求会一直
   挂着，只靠它的返回值面板只能显示一行冻结的文案。进度按整 5% 节流。
 - 面板只在守护进程仍认得升级的 `downloading`/`verifying`/`installing` 三个阶段从
@@ -324,9 +323,8 @@ TRAE 自身文件它唯一允许写入的是用户级 `User/settings.json`，
 - 在这个 Windows 工作区，内置的 `apply_patch` 工具和某些沙箱化 shell 启动可能
   在运行命令前就报 `fs sandbox helper failed ... setup refresh had errors`。把这种
   情况当作本地 Codex 执行环境的失败，而不是关于仓库或被测代码的证据。
-- `.git` 是有意写成的 17 字节文件，内容为 `gitdir: .git-meta`；`.git-meta` 才是
-  真正的 Git 元数据目录。不要把它当作修复尝试去移动、删除或重建 `.git`。
-  已被测过一次，并未解决运行器失败。
+- 本仓库使用标准的 `.git` 目录。如果 `.git` 看起来不像常规目录，先确认是不是
+  磁盘或权限问题，不要把它当作可重建的临时文件处理。
 - 当沙箱化进程启动这样被拒时，用升级权限重试完全相同的命令。应优先运行仍然
   可用的只读命令：`rg`、`git log`、`git diff --stat` 和 `git diff --check`。
 - 如果内置的 `apply_patch` 工具始终不可用，就在升级权限下直接用 Codex 可执行文件的

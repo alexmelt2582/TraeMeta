@@ -28,7 +28,7 @@ const PORTABLE_DIR = path.join(DIST_DIR, "portable");
 const BUNDLE_PATH = path.join(DIST_DIR, "bundle.cjs");
 const SEA_CONFIG_PATH = path.join(DIST_DIR, "sea-config.json");
 const BLOB_PATH = path.join(DIST_DIR, "sea-prep.blob");
-const EXE_NAME = "TraeEnhancer.exe";
+const EXE_NAME = "TraeMeta.exe";
 const EXE_PATH = path.join(DIST_DIR, EXE_NAME);
 const PORTABLE_EXE_PATH = path.join(PORTABLE_DIR, EXE_NAME);
 const ENTRIES = {
@@ -36,7 +36,7 @@ const ENTRIES = {
   injectSource: path.join(PROJECT_ROOT, "src", "ui", "inject.js"),
   postjectCli: path.join(PROJECT_ROOT, "node_modules", "postject", "dist", "cli.js"),
   trayScript: path.join(PROJECT_ROOT, "scripts", "tray.ps1"),
-  cmdEntry: path.join(PROJECT_ROOT, "scripts", "trae-enhancer.cmd"),
+  cmdEntry: path.join(PROJECT_ROOT, "scripts", "trae-meta.cmd"),
   readme: path.join(PROJECT_ROOT, "README.md"),
 };
 
@@ -182,7 +182,7 @@ async function assemblePortableFolder() {
   await fs.rm(path.join(PORTABLE_DIR, "logs"), { recursive: true, force: true });
   await fs.copyFile(EXE_PATH, PORTABLE_EXE_PATH);
   await fs.copyFile(ENTRIES.trayScript, path.join(PORTABLE_DIR, "scripts", "tray.ps1"));
-  await fs.copyFile(ENTRIES.cmdEntry, path.join(PORTABLE_DIR, "scripts", "trae-enhancer.cmd"));
+  await fs.copyFile(ENTRIES.cmdEntry, path.join(PORTABLE_DIR, "scripts", "trae-meta.cmd"));
   await fs.copyFile(ENTRIES.readme, path.join(PORTABLE_DIR, "README.md"));
 
   // The shortcuts the installer creates point here rather than at the executable:
@@ -209,7 +209,7 @@ async function assemblePortableFolder() {
   for (const relative of [
     EXE_NAME,
     "README.md",
-    path.join("scripts", "trae-enhancer.cmd"),
+    path.join("scripts", "trae-meta.cmd"),
     path.join("scripts", "tray.ps1"),
     path.join("scripts", LAUNCH_VBS_NAME),
   ]) {

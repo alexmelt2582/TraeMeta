@@ -36,7 +36,7 @@ test("process ownership requires both a managed image and the expected command l
   );
   assert.equal(
     isManagedProcessCommand(
-      "D:\\app\\TraeEnhancer.exe --internal-daemon",
+      "D:\\app\\TraeMeta.exe --internal-daemon",
       "daemon",
       { bundled: true },
     ),
@@ -47,7 +47,7 @@ test("process ownership requires both a managed image and the expected command l
     false,
   );
   assert.equal(
-    isManagedProcessCommand("D:\\app\\TraeEnhancer.exe --internal-watchdog", "daemon", {
+    isManagedProcessCommand("D:\\app\\TraeMeta.exe --internal-watchdog", "daemon", {
       bundled: true,
     }),
     false,
@@ -75,7 +75,7 @@ test("pid files only accept a single numeric first line", () => {
 test("health payloads without a trustworthy pid are rejected", () => {
   const valid = parseHealth({
     ok: true,
-    name: "TRAE SOLO CN Enhancer",
+    name: "Trae Meta",
     pid: 54776,
     accountCount: 3,
     keepaliveEnabled: true,
@@ -100,10 +100,10 @@ test("health payloads without a trustworthy pid are rejected", () => {
 
 test("only this project's source and bundled process images are managed", () => {
   assert.equal(isManagedProcessImage("node"), true);
-  assert.equal(isManagedProcessImage("TraeEnhancer"), true);
-  assert.equal(isManagedProcessImage("trae-solo-cn-enhancer"), true);
+  assert.equal(isManagedProcessImage("TraeMeta"), true);
+  assert.equal(isManagedProcessImage("trae-meta"), true);
   assert.equal(isManagedProcessImage("powershell"), true);
-  assert.equal(isManagedProcessImage("TRAE SOLO CN"), false);
+  assert.equal(isManagedProcessImage("Trae CN"), false);
   assert.equal(isManagedProcessImage(null), false);
 });
 
@@ -251,7 +251,7 @@ test("status summary never reports a pid it does not have", () => {
   const running = summarizeStatus({
     health: parseHealth({
       ok: true,
-      name: "TRAE SOLO CN Enhancer",
+      name: "Trae Meta",
       pid: 42,
       accountCount: 3,
     }),

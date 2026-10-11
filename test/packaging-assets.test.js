@@ -17,7 +17,7 @@ async function read(relativePath) {
 }
 
 test("entry scripts stay pure ASCII without a BOM", async () => {
-  for (const relativePath of ["scripts/trae-enhancer.cmd", "scripts/tray.ps1"]) {
+  for (const relativePath of ["scripts/trae-meta.cmd", "scripts/tray.ps1"]) {
     const bytes = await read(relativePath);
     assert.equal(bytes.subarray(0, 3).equals(UTF8_BOM), false, relativePath);
     assert.equal(bytes.some((byte) => byte > 0x7f), false, relativePath);
@@ -27,7 +27,7 @@ test("entry scripts stay pure ASCII without a BOM", async () => {
 test("the packaged launcher hides its console and stays pure ASCII", () => {
   // Exactly what `npm run build:exe` writes — same builder, so this cannot drift.
   const vbs = buildLaunchVbs({
-    nodePath: path.join(PROJECT_ROOT, "dist", "portable", "TraeEnhancer.exe"),
+    nodePath: path.join(PROJECT_ROOT, "dist", "portable", "TraeMeta.exe"),
   });
   // wscript.exe reads a .vbs as ANSI, so a non-ASCII byte here would be mojibake.
   assert.equal(Buffer.from(vbs, "utf8").some((byte) => byte > 0x7f), false);
@@ -41,7 +41,7 @@ test("the packaged launcher hides its console and stays pure ASCII", () => {
 
 test("the packaged launcher reports a missing executable instead of doing nothing", () => {
   const vbs = buildLaunchVbs({
-    nodePath: path.join(PROJECT_ROOT, "dist", "portable", "TraeEnhancer.exe"),
+    nodePath: path.join(PROJECT_ROOT, "dist", "portable", "TraeMeta.exe"),
   });
 
   // A desktop shortcut that silently quits is indistinguishable from one that
@@ -55,7 +55,7 @@ test("the packaged launcher reports a missing executable instead of doing nothin
   assert.ok(vbs.includes("& vbCrLf & vbCrLf & nodeExe"), "the dialog must name the path it looked in");
   // Warning icon with an explicit title, and above all no single-line `If ... : `
   // form, whose clause VBScript reads to the end of the line.
-  assert.ok(vbs.includes(", 48, \"TRAE SOLO CN Enhancer\""), "the dialog needs a title and warning icon");
+  assert.ok(vbs.includes(", 48, \"Trae Meta\""), "the dialog needs a title and warning icon");
   assert.equal(/Then .*:/.test(vbs), false, "no single-line If with a colon clause");
 });
 
@@ -63,7 +63,7 @@ test("the logon entry stays silent when the executable is missing", () => {
   // The opposite choice on purpose: a modal box at every logon would be worse
   // than the silence, so the shared builder must keep MsgBox opt-in.
   const vbs = buildAutostartVbs({
-    nodePath: path.join(PROJECT_ROOT, "dist", "portable", "TraeEnhancer.exe"),
+    nodePath: path.join(PROJECT_ROOT, "dist", "portable", "TraeMeta.exe"),
     bundled: true,
     flags: ["--quiet"],
   });
@@ -71,20 +71,20 @@ test("the logon entry stays silent when the executable is missing", () => {
 });
 
 test("the cmd entry supports both source-build and portable layouts", async () => {
-  const text = (await read("scripts/trae-enhancer.cmd")).toString("ascii");
-  assert.match(text, /dist\\TraeEnhancer\.exe/);
-  assert.match(text, /if exist "TraeEnhancer\.exe"/);
+  const text = (await read("scripts/trae-meta.cmd")).toString("ascii");
+  assert.match(text, /dist\\TraeMeta\.exe/);
+  assert.match(text, /if exist "TraeMeta\.exe"/);
   assert.match(text, /"%ENHANCER_EXE%" %ARGS%/);
 });
 
 test("the installer script keeps its required UTF-8 BOM", async () => {
-  const bytes = await read("scripts/win/trae-enhancer.iss");
+  const bytes = await read("scripts/win/trae-meta.iss");
   assert.equal(bytes.subarray(0, 3).equals(UTF8_BOM), true);
   assert.match(bytes.toString("utf8"), /登录时自动启动后台服务/);
 });
 
 test("the installer launches through the hidden entry point, not the executable", async () => {
-  const text = (await read("scripts/win/trae-enhancer.iss")).toString("utf8");
+  const text = (await read("scripts/win/trae-meta.iss")).toString("utf8");
 
   // Packaged at all: without this the shortcut points at a missing file.
   assert.ok(

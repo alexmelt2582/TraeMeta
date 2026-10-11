@@ -9,7 +9,7 @@ import {
 
 const NODE = "C:\\nodejs\\node.exe";
 const SCRIPT = "D:\\app\\scripts\\service.js";
-const EXE = "D:\\app\\TraeEnhancer.exe";
+const EXE = "D:\\app\\TraeMeta.exe";
 
 test("source mode reads the command after the script path", () => {
   const parsed = parseServiceArgs([NODE, SCRIPT, "status"]);

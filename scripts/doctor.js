@@ -6,8 +6,8 @@ import {
   parsePort,
 } from "../src/constants.js";
 
-const cdpPort = parsePort(process.env.TRAE_ENHANCER_CDP_PORT, DEFAULT_CDP_PORT);
-const uiPort = parsePort(process.env.TRAE_ENHANCER_UI_PORT, DEFAULT_UI_PORT);
+const cdpPort = parsePort(process.env.TRAEMETA_ENHANCER_CDP_PORT, DEFAULT_CDP_PORT);
+const uiPort = parsePort(process.env.TRAEMETA_ENHANCER_UI_PORT, DEFAULT_UI_PORT);
 const keepOpen = process.argv.includes("--keep-open");
 
 function report(payload) {
@@ -36,20 +36,20 @@ async function main() {
 
   await client.connect(target.webSocketDebuggerUrl);
   const panelWasOpen = await client.evaluate(
-    `!!document.querySelector("#trae-enhancer-root .te-panel.open")`,
+    `!!document.querySelector("#traemeta-root .te-panel.open")`,
   );
   if (!panelWasOpen) {
-    await client.evaluate(`document.querySelector("#trae-enhancer-root .te-fab")?.click()`);
+    await client.evaluate(`document.querySelector("#traemeta-root .te-fab")?.click()`);
     await new Promise((resolve) => setTimeout(resolve, 800));
   }
   const dom = await client.evaluate(`
     ({
-      root: !!document.getElementById("trae-enhancer-root"),
-      floatingButton: !!document.querySelector("#trae-enhancer-root .te-fab"),
-      panel: !!document.querySelector("#trae-enhancer-root .te-panel"),
-      panelOpen: !!document.querySelector("#trae-enhancer-root .te-panel.open"),
-      accountCards: document.querySelectorAll("#trae-enhancer-root .te-card").length,
-      statusText: document.querySelector("#trae-enhancer-root .te-status")?.textContent || ""
+      root: !!document.getElementById("traemeta-root"),
+      floatingButton: !!document.querySelector("#traemeta-root .te-fab"),
+      panel: !!document.querySelector("#traemeta-root .te-panel"),
+      panelOpen: !!document.querySelector("#traemeta-root .te-panel.open"),
+      accountCards: document.querySelectorAll("#traemeta-root .te-card").length,
+      statusText: document.querySelector("#traemeta-root .te-status")?.textContent || ""
     })
   `);
   const identity = await client.getLiveIdentity();
@@ -74,7 +74,7 @@ async function main() {
       : null,
   });
   if (!panelWasOpen && !keepOpen) {
-    await client.evaluate(`document.querySelector("#trae-enhancer-root .te-fab")?.click()`);
+    await client.evaluate(`document.querySelector("#traemeta-root .te-fab")?.click()`);
   }
   await client.closeSocket();
 }

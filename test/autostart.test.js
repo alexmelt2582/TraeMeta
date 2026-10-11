@@ -57,13 +57,13 @@ test("source mode resolves the watchdog relative to the project root", () => {
 
 test("bundled mode resolves the executable from its own folder, not from an absolute path", () => {
   const vbs = buildAutostartVbs({
-    nodePath: "D:\\Me\\副业\\Trae多账号协同\\dist\\portable\\TraeEnhancer.exe",
+    nodePath: "D:\\Me\\副业\\Trae多账号协同\\dist\\portable\\TraeMeta.exe",
     bundled: true,
     flags: ["--internal-watchdog", "--quiet"],
   });
   assert.equal(findNonAscii(vbs), null);
   assert.match(vbs, /--internal-watchdog --quiet/);
-  assert.match(vbs, /nodeExe = root & "\\" & "TraeEnhancer\.exe"/);
+  assert.match(vbs, /nodeExe = root & "\\" & "TraeMeta\.exe"/);
   assert.equal(vbs.includes("scriptPath = root"), false);
   assert.equal(vbs.includes("fso.FileExists(scriptPath)"), false);
   assert.equal(vbs.includes('nodeExe = "node.exe"'), false);
@@ -113,7 +113,7 @@ test("every generated vbs line has balanced double quotes", () => {
   const samples = [
     buildAutostartVbs({ nodePath: "C:\\Program Files\\nodejs\\node.exe" }),
     buildAutostartVbs({
-      nodePath: "D:\\Me\\副业\\Trae多账号协同\\dist\\portable\\TraeEnhancer.exe",
+      nodePath: "D:\\Me\\副业\\Trae多账号协同\\dist\\portable\\TraeMeta.exe",
       bundled: true,
       flags: ["--internal-watchdog", "--quiet"],
     }),
@@ -188,7 +188,7 @@ test("the startup folder is derived from APPDATA", () => {
 test("the startup shortcut keeps the .lnk extension", () => {
   assert.equal(
     startupShortcutPath("C:\\Startup"),
-    "C:\\Startup\\TRAE SOLO CN Enhancer.lnk",
+    "C:\\Startup\\Trae Meta.lnk",
   );
 });
 

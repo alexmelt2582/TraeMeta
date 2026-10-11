@@ -27,8 +27,8 @@ const HERE = path.dirname(path.resolve(process.argv[1]));
 const PROJECT_ROOT = path.resolve(HERE, "..");
 
 const RELEASE_DIR = path.join(PROJECT_ROOT, "dist", "release");
-const SETUP_BASE = "TraeEnhancer-Setup";
-const PORTABLE_BASE = "TraeEnhancer-Portable";
+const SETUP_BASE = "TraeMeta-Setup";
+const PORTABLE_BASE = "TraeMeta-Portable";
 const CHECKSUM_FILE = "SHA256SUMS.txt";
 
 const DRY_RUN = process.argv.includes("--dry-run");
