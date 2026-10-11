@@ -109,6 +109,10 @@
       gap: 10px;
       border-bottom: 1px solid var(--te-border);
       flex: 0 0 auto;
+      /* The header doubles as the drag handle for the whole widget. Buttons
+         inside it keep their own pointer cursor. */
+      cursor: grab;
+      user-select: none;
     }
 
     #${ROOT_ID} .te-title {
@@ -4601,6 +4605,9 @@
 
   function openPanel() {
     panel.classList.add("open");
+    // Anchored per open: the widget may have been dragged since the last time, so
+    // the side with room for the panel is not a constant.
+    positionPanel();
     adoptionError = null;
     // The daemon adopts the signed-in account on its own now, so this is only a
     // fallback for the moment the panel is opened. Kept because it is the one path
@@ -4651,7 +4658,134 @@
     panel.classList.remove("open");
   }
 
+  /**
+   * Moving the widget, and putting it back where it was left.
+   *
+   * It was pinned to the bottom-right corner, which on a wide window lands on top
+   * of the editor's own floating controls with no way to get it out of the way.
+   * The icon and the panel header both drag the whole widget, and the position is
+   * stored so a reload returns it. Nothing here is required for the panel to work:
+   * with no stored position the original corner is used unchanged.
+   */
+  const POSITION_KEY = "traemeta:widget-position";
+  // Movement smaller than this is still a click; without it every click would
+  // jitter the widget by a pixel or two and be remembered as a move.
+  const DRAG_THRESHOLD = 4;
+  let dragState = null;
+  let ignoreNextFabClick = false;
+
+  function clampToViewport(left, top) {
+    const width = root.offsetWidth || 42;
+    const height = root.offsetHeight || 42;
+    return {
+      left: Math.min(Math.max(0, left), Math.max(0, window.innerWidth - width)),
+      top: Math.min(Math.max(0, top), Math.max(0, window.innerHeight - height)),
+    };
+  }
+
+  /** Places the widget; `left` and `right` must never both be set, or the fixed
+   * box stretches across the window instead of moving. */
+  function moveWidget(left, top) {
+    const next = clampToViewport(left, top);
+    root.style.left = `${next.left}px`;
+    root.style.top = `${next.top}px`;
+    root.style.right = "auto";
+    root.style.bottom = "auto";
+    return next;
+  }
+
+  function storedWidgetPosition() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(POSITION_KEY) ?? "null");
+      return Number.isFinite(saved?.left) && Number.isFinite(saved?.top) ? saved : null;
+    } catch {
+      // Unreadable means "never moved"; it must not take the panel down.
+      return null;
+    }
+  }
+
+  const savedWidgetPosition = storedWidgetPosition();
+  if (savedWidgetPosition) moveWidget(savedWidgetPosition.left, savedWidgetPosition.top);
+
+  /** Anchors the panel to whichever side of the icon has room for it, so a widget
+   * dragged to the left or top edge does not open its panel past the window. */
+  function positionPanel() {
+    const rect = root.getBoundingClientRect();
+    panel.style.left = "";
+    panel.style.right = "";
+    panel.style.top = "";
+    panel.style.bottom = "";
+    // Anchored to the side that actually has room, measured against the panel's
+    // own size. `right: 0` grows the panel leftward from the icon's right edge, so
+    // it needs that much space to the left; `left: 0` mirrors it to the right.
+    panel.style[rect.right >= panel.offsetWidth ? "right" : "left"] = "0";
+    // Vertical works the same way: `bottom: 50px` sits the panel above the icon,
+    // so the room it needs is the distance from the viewport top down to the
+    // icon's bottom edge. Near the top the panel flips below instead.
+    panel.style[rect.bottom >= panel.offsetHeight ? "bottom" : "top"] = "50px";
+  }
+
+  function wireDrag(handle, canStart) {
+    handle.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 || (canStart && !canStart(event))) return;
+      const rect = root.getBoundingClientRect();
+      dragState = {
+        x: event.clientX,
+        y: event.clientY,
+        left: rect.left,
+        top: rect.top,
+        moved: false,
+      };
+      handle.setPointerCapture(event.pointerId);
+    });
+    handle.addEventListener("pointermove", (event) => {
+      if (!dragState) return;
+      const dx = event.clientX - dragState.x;
+      const dy = event.clientY - dragState.y;
+      // Below the threshold this is still a click, so nothing moves yet.
+      if (!dragState.moved && Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD) return;
+      dragState.moved = true;
+      moveWidget(dragState.left + dx, dragState.top + dy);
+    });
+    const finish = (event) => {
+      if (!dragState) return;
+      const moved = dragState.moved;
+      dragState = null;
+      if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+      if (!moved) return;
+      if (handle === fab) ignoreNextFabClick = true;
+      const rect = root.getBoundingClientRect();
+      const next = moveWidget(rect.left, rect.top);
+      try {
+        localStorage.setItem(POSITION_KEY, JSON.stringify(next));
+      } catch {
+        // Remembering the spot is a convenience; blocked or full storage must not
+        // turn a drag into a visible error.
+      }
+    };
+    handle.addEventListener("pointerup", finish);
+    handle.addEventListener("pointercancel", finish);
+  }
+
+  wireDrag(fab);
+  // Buttons in the header keep their own click, so drags starting on one are left
+  // alone — otherwise the close button would become a drag handle.
+  wireDrag(header, (event) => !event.target.closest("button, a, input, select"));
+
+  // A window that shrank can leave the widget past the new edge, so it is pulled
+  // back. The stored value is left as it is: the window may grow again.
+  window.addEventListener("resize", () => {
+    if (!root.style.left) return;
+    moveWidget(root.getBoundingClientRect().left, root.getBoundingClientRect().top);
+  });
+
   fab.addEventListener("click", () => {
+    // A drag ends with a click on the button it started on, and that click must
+    // not also toggle the panel.
+    if (ignoreNextFabClick) {
+      ignoreNextFabClick = false;
+      return;
+    }
     if (panel.classList.contains("open")) closePanel();
     else openPanel();
   });
