@@ -243,6 +243,45 @@ async function waitForExit(processIds, timeoutMs) {
   return [...remaining];
 }
 
+/**
+ * Force-stops every TRAE process and verifies none survived, in one PowerShell
+ * invocation.
+ *
+ * The switch path used to run find → close-window → wait → kill → verify as four
+ * separate calls, and each PowerShell launch costs about half a second before it
+ * does anything, which is what made a switch feel slow. Closing the main window
+ * is also pointless for TRAE: it parks the app in the notification area instead
+ * of quitting, so the graceful wait was always spent to no effect and the kill
+ * ran anyway. One call that kills outright is what makes the switch feel instant.
+ *
+ * Returns the process ids that were still alive after the wait, empty when the
+ * app is fully gone.
+ */
+export async function stopTraeImmediately(exePath, { verifyTimeoutMs = 5000 } = {}) {
+  const budget = Math.max(0, Number(verifyTimeoutMs) || 0);
+  const script = `
+    $target = ${psQuote(exePath)}
+    function Get-Target {
+      @(Get-Process -Name 'Trae CN' -ErrorAction SilentlyContinue | Where-Object {
+        $_.Path -and $_.Path.Equals($target, [System.StringComparison]::OrdinalIgnoreCase)
+      })
+    }
+    $targets = Get-Target
+    if (-not $targets.Count) { Write-Output ''; exit 0 }
+    $targets | Stop-Process -Force -ErrorAction SilentlyContinue
+    $deadline = (Get-Date).AddMilliseconds(${budget})
+    while ((Get-Date) -lt $deadline) {
+      $left = Get-Target
+      if (-not $left.Count) { Write-Output ''; exit 0 }
+      Start-Sleep -Milliseconds 100
+    }
+    (Get-Target | Select-Object -ExpandProperty Id) -join ','
+  `;
+  const output = await runPowerShell(script, { timeout: 20000 });
+  if (!output) return [];
+  return output.split(",").map(Number).filter(Number.isInteger);
+}
+
 export async function stopTraeForRestart(exePath, { timeoutMs = 15000 } = {}) {
   const processIds = await findTraeProcessIds(exePath);
   if (!processIds.length) return [];

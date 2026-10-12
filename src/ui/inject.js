@@ -919,55 +919,6 @@
       line-height: 1.6;
     }
 
-    #${ROOT_ID} .te-login-options {
-      display: grid;
-      gap: 9px;
-      margin-top: 14px;
-    }
-
-    #${ROOT_ID} .te-login-option {
-      display: flex;
-      align-items: flex-start;
-      gap: 10px;
-      padding: 12px;
-      border: 1px solid var(--te-border);
-      border-radius: 10px;
-      background: var(--te-surface);
-      cursor: pointer;
-    }
-
-    #${ROOT_ID} .te-login-option.selected {
-      border-color: var(--te-accent);
-      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--te-accent) 42%, transparent);
-    }
-
-    #${ROOT_ID} .te-login-option input {
-      width: 16px;
-      height: 16px;
-      flex: 0 0 16px;
-      margin: 2px 0 0;
-      accent-color: var(--te-accent);
-      cursor: pointer;
-    }
-
-    #${ROOT_ID} .te-login-option-copy {
-      min-width: 0;
-    }
-
-    #${ROOT_ID} .te-login-option-title {
-      display: block;
-      font-size: 13px;
-      font-weight: 650;
-    }
-
-    #${ROOT_ID} .te-login-option-desc {
-      display: block;
-      margin-top: 4px;
-      color: var(--te-muted);
-      font-size: 11px;
-      line-height: 1.55;
-    }
-
     #${ROOT_ID} .te-transfer-select-head {
       display: flex;
       align-items: center;
@@ -1647,7 +1598,7 @@
             <span class="te-feature-icon">1</span>
             <div>
               <span class="te-feature-title">添加账号</span>
-              <span class="te-feature-desc">点「登录」，推荐选择「无感登录」。在浏览器完成授权后，账号会自动出现在列表里。</span>
+              <span class="te-feature-desc">点「登录」，在浏览器完成授权后，账号会自动出现在列表里，当前正在用的账号不会被打断。</span>
             </div>
           </article>
           <article class="te-feature">
@@ -1670,6 +1621,32 @@
         <div class="te-section-title">自动维护</div>
         <p class="te-section-hint te-feature-checkin">每天自动核对签到状态，并在需要时更新账号信息。</p>
         <p class="te-section-hint">只在登录信息临近到期时才更新，避免频繁操作影响其他设备。</p>
+      </section>
+      <section class="te-section">
+        <div class="te-section-title">还能做什么</div>
+        <div class="te-feature-list">
+          <article class="te-feature">
+            <span class="te-feature-icon">+</span>
+            <div>
+              <span class="te-feature-title">积分到期提醒</span>
+              <span class="te-feature-desc">积分快到期时在账号列表标个红点，点积分图标看明细。</span>
+            </div>
+          </article>
+          <article class="te-feature">
+            <span class="te-feature-icon">+</span>
+            <div>
+              <span class="te-feature-title">关闭 TRAE 自动更新</span>
+              <span class="te-feature-desc">在「设置 → 更新」里禁止 TRAE 自己升级，避免升级打断正在进行的会话；重启 TRAE 后生效。</span>
+            </div>
+          </article>
+          <article class="te-feature">
+            <span class="te-feature-icon">+</span>
+            <div>
+              <span class="te-feature-title">网络代理</span>
+              <span class="te-feature-desc">需要经过代理才能连上 TRAE 服务器时，在「设置 → 网络」里配置，保存后立即生效。</span>
+            </div>
+          </article>
+        </div>
       </section>
       <details class="te-about-details">
         <summary>数据安全</summary>
@@ -1937,34 +1914,6 @@
     </div>
   `;
 
-  const loginChoiceMask = document.createElement("div");
-  loginChoiceMask.className = "te-modal-mask";
-  loginChoiceMask.innerHTML = `
-    <div class="te-modal" role="dialog" aria-modal="true" aria-label="选择登录方式">
-      <div class="te-modal-title">选择登录方式</div>
-      <div class="te-login-options" role="radiogroup" aria-label="登录方式">
-        <label class="te-login-option selected">
-          <input type="radio" name="te-login-way" value="fake_logout" checked>
-          <span class="te-login-option-copy">
-            <span class="te-login-option-title">假退出</span>
-            <span class="te-login-option-desc">安全备份当前账号后重启到登录页，新账号登录后自动加入列表</span>
-          </span>
-        </label>
-        <label class="te-login-option">
-          <input type="radio" name="te-login-way" value="seamless">
-          <span class="te-login-option-copy">
-            <span class="te-login-option-title">无感登录</span>
-            <span class="te-login-option-desc">不退出 TRAE，在浏览器完成授权后新账号自动加入列表</span>
-          </span>
-        </label>
-      </div>
-      <div class="te-modal-actions">
-        <button class="te-secondary te-login-choice-cancel" type="button">取消</button>
-        <button class="te-primary te-login-choice-confirm" type="button">确定</button>
-      </div>
-    </div>
-  `;
-
   const transferMask = document.createElement("div");
   transferMask.className = "te-modal-mask";
   transferMask.innerHTML = `
@@ -1988,6 +1937,27 @@
       <div class="te-modal-actions">
         <button class="te-secondary te-delete-cancel" type="button">取消</button>
         <button class="te-danger te-delete-submit" type="button">删除</button>
+      </div>
+    </div>
+  `;
+
+  /**
+   * Confirmation for switching accounts.
+   *
+   * A switch is not a reversible in-place action: it force-closes the TRAE the
+   * user is looking at and relaunches it on another account, so anything unsaved
+   * is lost. Doing that from a single icon click was too easy to trigger by
+   * accident, hence the same confirm-then-act shape the delete flow already uses.
+   */
+  const switchMask = document.createElement("div");
+  switchMask.className = "te-modal-mask";
+  switchMask.innerHTML = `
+    <div class="te-modal" role="dialog" aria-modal="true" aria-label="切换账号">
+      <div class="te-modal-title">切换账号</div>
+      <div class="te-modal-status te-switch-status"></div>
+      <div class="te-modal-actions">
+        <button class="te-secondary te-switch-cancel" type="button">取消</button>
+        <button class="te-primary te-switch-submit" type="button">切换</button>
       </div>
     </div>
   `;
@@ -2043,10 +2013,10 @@
 
   root.append(
     panel,
-    loginChoiceMask,
     oauthMask,
     transferMask,
     deleteMask,
+    switchMask,
     installMask,
     creditPopover,
     importFileInput,
@@ -2061,9 +2031,6 @@
   let accountCount = 0;
   let oauthSession = null;
   let oauthPollTimer = null;
-  let fakeLogoutSession = null;
-  let fakeLogoutPollTimer = null;
-  let backgroundLoginNoticeShown = false;
   let transferBusy = false;
   let transferSubmit = null;
   let checkinBusy = false;
@@ -2087,24 +2054,9 @@
   let creditPopoverAnchor = null;
   let deleteAccountId = null;
   let deleteAccountName = "";
-
-  function loginSessionSeen(sessionId) {
-    if (!sessionId) return false;
-    try {
-      return localStorage.getItem(`traemeta:login:${sessionId}`) === "seen";
-    } catch {
-      return false;
-    }
-  }
-
-  function markLoginSessionSeen(sessionId) {
-    if (!sessionId) return;
-    try {
-      localStorage.setItem(`traemeta:login:${sessionId}`, "seen");
-    } catch {
-      // Local storage is optional; the in-memory guard still prevents repeats.
-    }
-  }
+  let switchAccountId = null;
+  let switchAccountName = "";
+  let switchBusy = false;
 
   /**
    * 合并版 Trae CN 的 workbench CSP 禁止 `connect-src http:`，但放行 `ws:`，
@@ -2717,17 +2669,7 @@
       const status = footer.querySelector(".te-status");
       const dot = footer.querySelector(".te-dot");
       dot.classList.toggle("online", !!health.cdpConnected);
-      if (
-        fakeLogoutSession &&
-        !["complete", "error", "cancelled"].includes(fakeLogoutSession.status)
-      ) {
-        status.textContent =
-          fakeLogoutSession.status === "awaiting_login"
-            ? "等待新账号登录"
-            : fakeLogoutSession.message || "登录处理中";
-      } else {
-        status.textContent = health.cdpConnected ? "CDP 已连接" : "等待 CDP";
-      }
+      status.textContent = health.cdpConnected ? "CDP 已连接" : "等待 CDP";
       accountCount = data.accounts.length;
       renderHeaderSubtitle();
       renderAccounts(data.accounts, data.currentAccountId, data.currentAccountState);
@@ -4059,23 +4001,59 @@
     }
   }
 
-  async function switchAccount(button, accountId) {
-    const card = button.closest(".te-card");
-    const name = card?.querySelector(".te-name")?.textContent || "目标账号";
-    button.disabled = true;
-    showToast(`正在切换到「${name}」...`);
+  function openSwitchDialog(account) {
+    switchAccountId = account.id;
+    switchAccountName = account.displayName || "目标账号";
+    switchBusy = false;
+    switchMask.querySelector(".te-switch-status").textContent =
+      `切换到「${switchAccountName}」会先关闭正在运行的 TRAE（未保存的内容会丢失），再用该账号重新打开。是否继续？`;
+    const cancel = switchMask.querySelector(".te-switch-cancel");
+    const submit = switchMask.querySelector(".te-switch-submit");
+    cancel.disabled = false;
+    submit.disabled = false;
+    cancel.focus();
+    switchMask.classList.add("open");
+  }
+
+  function closeSwitchDialog() {
+    switchMask.classList.remove("open");
+    switchAccountId = null;
+    switchAccountName = "";
+    switchBusy = false;
+  }
+
+  /**
+   * Runs the switch after the user confirms.
+   *
+   * The panel lives inside the TRAE that is about to be closed, so on success it
+   * usually dies before this promise resolves and never gets to show the farewell
+   * toast — that is expected. The failure path (a rejected request while the
+   * renderer is still alive) is what this keeps interactive.
+   */
+  async function confirmSwitchAccount() {
+    if (!switchAccountId || switchBusy) return;
+    switchBusy = true;
+    const cancel = switchMask.querySelector(".te-switch-cancel");
+    const submit = switchMask.querySelector(".te-switch-submit");
+    const status = switchMask.querySelector(".te-switch-status");
+    cancel.disabled = true;
+    submit.disabled = true;
+    status.textContent =
+      `正在切换到「${switchAccountName}」...TRAE 会先退出，再用该账号自动重启，请稍候。`;
     try {
       await api("/api/accounts/switch", {
         method: "POST",
-        body: JSON.stringify({ accountId }),
+        body: JSON.stringify({ accountId: switchAccountId }),
       });
-      showToast(`已切换到「${name}」`);
+      const switchedName = switchAccountName;
+      closeSwitchDialog();
+      showToast(`已切换到「${switchedName}」`);
       await refresh();
     } catch (error) {
-      showToast(error.message || String(error), true);
-      await refresh();
-    } finally {
-      button.disabled = false;
+      status.textContent = error.message || String(error);
+      switchBusy = false;
+      cancel.disabled = false;
+      submit.disabled = false;
     }
   }
 
@@ -4167,11 +4145,6 @@
     oauthPollTimer = null;
   }
 
-  function stopFakeLogoutPolling() {
-    clearTimeout(fakeLogoutPollTimer);
-    fakeLogoutPollTimer = null;
-  }
-
   function closeOAuthDialog({ cancel = false } = {}) {
     stopOAuthPolling();
     if (cancel && oauthSession?.loginId) {
@@ -4182,27 +4155,6 @@
     }
     oauthSession = null;
     oauthMask.classList.remove("open");
-  }
-
-  function closeLoginChoice() {
-    loginChoiceMask.classList.remove("open");
-  }
-
-  function openLoginChoice() {
-    if (
-      fakeLogoutSession?.sessionId &&
-      !isFakeLogoutTerminal(fakeLogoutSession.status)
-    ) {
-      showLoginProgress("假退出", fakeLogoutMessage(fakeLogoutSession));
-      pollFakeLogout({ showProgress: true }).catch(() => {});
-      return;
-    }
-    const options = loginChoiceMask.querySelectorAll(".te-login-option");
-    for (const option of options) {
-      const input = option.querySelector("input");
-      option.classList.toggle("selected", !!input?.checked);
-    }
-    loginChoiceMask.classList.add("open");
   }
 
   async function pollOAuthStatus() {
@@ -4255,141 +4207,6 @@
       setLoginStatus(error.message || String(error), true);
     } finally {
       button.disabled = false;
-    }
-  }
-
-  function fakeLogoutMessage(result) {
-    if (result.message) return result.message;
-    const messages = {
-      preparing: "正在备份当前账号...",
-      stopping: "正在安全关闭 Trae CN...",
-      clearing: "正在切换到登录页...",
-      starting: "正在重新打开 TRAE 登录页...",
-      awaiting_login: "请在 TRAE 登录页扫码登录新账号，登录后会自动保存。",
-      syncing: "新账号已保存，正在同步额度和签到...",
-      cancelling: "正在取消并恢复原账号...",
-      restoring: "正在恢复原账号并重新打开 TRAE...",
-      complete: "新账号已加入列表。",
-      cancelled: "已取消，原账号已恢复。",
-      error: result.error || "登录流程失败",
-    };
-    return messages[result.status] || "正在处理登录流程...";
-  }
-
-  function isFakeLogoutTerminal(status) {
-    return status === "complete" || status === "error" || status === "cancelled";
-  }
-
-  async function pollFakeLogout({ showProgress = false } = {}) {
-    if (!fakeLogoutSession?.sessionId) return;
-    try {
-      const result = await api(
-        `/api/fake-logout/status?sessionId=${encodeURIComponent(fakeLogoutSession.sessionId)}`,
-      );
-      fakeLogoutSession = result;
-      const message = fakeLogoutMessage(result);
-      if (showProgress) setLoginStatus(message, result.status === "error");
-
-      if (result.status === "complete") {
-        stopFakeLogoutPolling();
-        markLoginSessionSeen(result.sessionId);
-        showToast(message);
-        await refresh();
-        if (showProgress) setTimeout(() => closeOAuthDialog(), 1200);
-        setTimeout(() => {
-          fakeLogoutSession = null;
-          refresh().catch(() => {});
-        }, 1400);
-        return;
-      }
-      if (isFakeLogoutTerminal(result.status)) {
-        stopFakeLogoutPolling();
-        markLoginSessionSeen(result.sessionId);
-        showToast(message, result.status === "error");
-        await refresh();
-        if (showProgress) {
-          setLoginStatus(message, result.status === "error");
-        }
-        return;
-      }
-      fakeLogoutPollTimer = setTimeout(
-        () => pollFakeLogout({ showProgress }),
-        1000,
-      );
-    } catch (error) {
-      if (showProgress) setLoginStatus(error.message || String(error), true);
-      fakeLogoutPollTimer = setTimeout(
-        () => pollFakeLogout({ showProgress }),
-        2000,
-      );
-    }
-  }
-
-  async function startFakeLogout() {
-    const button = toolbar.querySelector(".te-login-new");
-    button.disabled = true;
-    showLoginProgress("假退出", "正在备份当前账号并准备重启 TRAE...");
-    try {
-      const result = await api("/api/fake-logout/start", {
-        method: "POST",
-        body: "{}",
-      });
-      fakeLogoutSession = result;
-      setLoginStatus(fakeLogoutMessage(result));
-      stopFakeLogoutPolling();
-      fakeLogoutPollTimer = setTimeout(
-        () => pollFakeLogout({ showProgress: true }),
-        800,
-      );
-    } catch (error) {
-      setLoginStatus(error.message || String(error), true);
-    } finally {
-      button.disabled = false;
-    }
-  }
-
-  async function cancelFakeLogout() {
-    if (!fakeLogoutSession?.sessionId) return;
-    setLoginStatus("正在取消并恢复原账号...");
-    try {
-      await api("/api/fake-logout/cancel", {
-        method: "POST",
-        body: JSON.stringify({ sessionId: fakeLogoutSession.sessionId }),
-      });
-      fakeLogoutSession.status = "cancelling";
-      fakeLogoutSession.message = "正在取消并恢复原账号...";
-      stopFakeLogoutPolling();
-      fakeLogoutPollTimer = setTimeout(
-        () => pollFakeLogout({ showProgress: true }),
-        500,
-      );
-    } catch (error) {
-      setLoginStatus(error.message || String(error), true);
-    }
-  }
-
-  async function resumeFakeLogout() {
-    try {
-      const result = await api("/api/fake-logout/active");
-      if (result.status === "missing") return;
-      if (isFakeLogoutTerminal(result.status) && loginSessionSeen(result.sessionId)) {
-        return;
-      }
-      fakeLogoutSession = result;
-      if (
-        !backgroundLoginNoticeShown &&
-        !["complete", "error", "cancelled"].includes(result.status)
-      ) {
-        backgroundLoginNoticeShown = true;
-        showToast("假退出登录进行中：请在 TRAE 登录页扫码");
-      }
-      stopFakeLogoutPolling();
-      fakeLogoutPollTimer = setTimeout(
-        () => pollFakeLogout({ showProgress: false }),
-        600,
-      );
-    } catch {
-      // The daemon may still be starting after TRAE restarts.
     }
   }
 
@@ -4796,7 +4613,9 @@
   toolbar.querySelector(".te-run-checkin").addEventListener("click", () => {
     runAccountCheckin().catch(() => {});
   });
-  toolbar.querySelector(".te-login-new").addEventListener("click", openLoginChoice);
+  toolbar.querySelector(".te-login-new").addEventListener("click", () => {
+    startOAuth().catch(() => {});
+  });
   toolbar.querySelector(".te-export-accounts").addEventListener("click", () => {
     openExportDialog().catch(() => {});
   });
@@ -4882,8 +4701,10 @@
       return;
     }
     const button = event.target.closest(".te-acc-switch");
-    if (!button?.dataset.accountId) return;
-    switchAccount(button, button.dataset.accountId).catch(() => {});
+    if (button?.dataset.accountId) {
+      const account = accountsById.get(button.dataset.accountId);
+      if (account) openSwitchDialog(account);
+    }
   });
   // Capture phase, so a click anywhere else closes the popover before whatever it
   // was aimed at acts on it. The icon's own mousedown is ignored, otherwise the
@@ -4921,26 +4742,17 @@
   deleteMask.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeDeleteDialog();
   });
-  loginChoiceMask.querySelectorAll(".te-login-option").forEach((option) => {
-    option.querySelector("input")?.addEventListener("change", () => {
-      loginChoiceMask.querySelectorAll(".te-login-option").forEach((candidate) => {
-        candidate.classList.toggle(
-          "selected",
-          !!candidate.querySelector("input")?.checked,
-        );
-      });
-    });
+  switchMask.querySelector(".te-switch-cancel").addEventListener("click", () => {
+    if (!switchBusy) closeSwitchDialog();
   });
-  loginChoiceMask.querySelector(".te-login-choice-cancel").addEventListener("click", closeLoginChoice);
-  loginChoiceMask.querySelector(".te-login-choice-confirm").addEventListener("click", () => {
-    const selected = loginChoiceMask.querySelector('input[name="te-login-way"]:checked');
-    if (!selected) return;
-    closeLoginChoice();
-    if (selected.value === "seamless") {
-      startOAuth().catch(() => {});
-    } else {
-      startFakeLogout().catch(() => {});
-    }
+  switchMask.querySelector(".te-switch-submit").addEventListener("click", () => {
+    confirmSwitchAccount().catch(() => {});
+  });
+  switchMask.addEventListener("click", (event) => {
+    if (event.target === switchMask && !switchBusy) closeSwitchDialog();
+  });
+  switchMask.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !switchBusy) closeSwitchDialog();
   });
   oauthMask.querySelector(".te-oauth-reopen").addEventListener("click", () => {
     if (!oauthSession?.loginId) return;
@@ -4954,14 +4766,7 @@
       .catch((error) => setLoginStatus(error.message || String(error), true));
   });
   oauthMask.querySelector(".te-oauth-cancel").addEventListener("click", () => {
-    if (
-      fakeLogoutSession?.sessionId &&
-      !isFakeLogoutTerminal(fakeLogoutSession.status)
-    ) {
-      cancelFakeLogout().catch(() => {});
-    } else {
-      closeOAuthDialog({ cancel: true });
-    }
+    closeOAuthDialog({ cancel: true });
   });
   transferMask.querySelector(".te-transfer-cancel").addEventListener("click", () => {
     if (!transferBusy) closeTransferDialog();
@@ -5006,11 +4811,8 @@
     window.removeEventListener("scroll", handleCreditPopoverScroll, true);
     window.removeEventListener("resize", closeCreditPopover);
     stopOAuthPolling();
-    stopFakeLogoutPolling();
     root.remove();
     style.remove();
     delete window.__traeMetaCleanup;
   };
-
-  resumeFakeLogout().catch(() => {});
 })();
