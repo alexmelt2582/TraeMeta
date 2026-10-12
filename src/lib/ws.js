@@ -31,6 +31,14 @@ function sendRaw(socket, opcode, payload) {
  */
 export function attachWebSocketJson(server, pathname, onJson) {
   server.on("upgrade", (request, socket) => {
+    // The panel's socket dies with the renderer, and an account switch force-kills
+    // that renderer on purpose. The resulting ECONNRESET is not actionable, but an
+    // unhandled "error" event on a socket is an uncaught exception — which the
+    // daemon's global handler turns into process.exit(1), taking the whole service
+    // down mid-switch. Swallow it here and let the peer's close path clean up.
+    socket.on("error", () => {
+      socket.destroy();
+    });
     let url;
     try {
       url = new URL(request.url || "/", "http://127.0.0.1");
