@@ -74,20 +74,6 @@ export async function isTraeCdpAvailable(port, timeoutMs = 2500) {
   }
 }
 
-export async function findTraeWindowProcessIds(exePath) {
-  const script = `
-    $target = ${psQuote(exePath)}
-    $items = @(Get-Process -Name 'Trae CN' -ErrorAction SilentlyContinue | Where-Object {
-      $_.Path -and $_.Path.Equals($target, [System.StringComparison]::OrdinalIgnoreCase) -and $_.MainWindowHandle -ne 0
-    } | Select-Object -ExpandProperty Id)
-    $items | ConvertTo-Json -Compress
-  `;
-  const output = await runPowerShell(script);
-  if (!output) return [];
-  const parsed = JSON.parse(output);
-  return (Array.isArray(parsed) ? parsed : [parsed]).map(Number).filter(Number.isInteger);
-}
-
 export async function findTraeProcessIds(exePath) {
   const script = `
     $target = ${psQuote(exePath)}

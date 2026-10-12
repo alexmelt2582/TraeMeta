@@ -33,7 +33,7 @@
 
 ### 路径 B：采纳 / 同步 TRAE 已在登录的账号
 
-账号是 **TRAE 里本来就登录着的**，系统把它现有的认证状态采纳过来（`backupCurrent`，含登录流程、假退出、Cockpit 同步时调用）。
+账号是 **TRAE 里本来就登录着的**，系统把它现有的认证状态采纳过来（`backupCurrent`，含登录流程、Cockpit 同步时调用）。
 
 TRAE 自己存的身份是它的 `iCubeAuthInfo://icube-dc:<deviceId>` 这把**设备密钥**，里面藏着原 `deviceId` 和原 EC 密钥对——但 TRAE 的快照里**没有顶层 `deviceIdentity`**。
 
