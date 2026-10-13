@@ -81,9 +81,10 @@
     }
 
     #${ROOT_ID} .te-panel {
-      position: absolute;
-      right: 0;
-      bottom: 50px;
+      /* Fixed, not absolute-in-root: positionPanel() places it against the window
+         edges directly and clamps it into the viewport, so it is never clipped
+         however close to an edge the icon has been dragged. */
+      position: fixed;
       /* Wide enough that a settings row reads as label + control on one line and
          the account meta row stops wrapping. */
       width: min(540px, calc(100vw - 24px));
@@ -109,9 +110,8 @@
       gap: 10px;
       border-bottom: 1px solid var(--te-border);
       flex: 0 0 auto;
-      /* The header doubles as the drag handle for the whole widget. Buttons
-         inside it keep their own pointer cursor. */
-      cursor: grab;
+      /* Only the icon drags the widget. The header is deliberately not a drag
+         handle: clicking anywhere in it must not shift the icon. */
       user-select: none;
     }
 
@@ -4480,9 +4480,9 @@
    *
    * It was pinned to the bottom-right corner, which on a wide window lands on top
    * of the editor's own floating controls with no way to get it out of the way.
-   * The icon and the panel header both drag the whole widget, and the position is
-   * stored so a reload returns it. Nothing here is required for the panel to work:
-   * with no stored position the original corner is used unchanged.
+   * The icon drags the whole widget — the open panel follows it — and the position
+   * is stored so a reload returns it. Nothing here is required for the panel to
+   * work: with no stored position the original corner is used unchanged.
    */
   const POSITION_KEY = "traemeta:widget-position";
   // Movement smaller than this is still a click; without it every click would
@@ -4508,6 +4508,9 @@
     root.style.top = `${next.top}px`;
     root.style.right = "auto";
     root.style.bottom = "auto";
+    // The panel is anchored to the icon rather than to the widget box, so moving
+    // the icon has to re-anchor it — otherwise the panel is left behind.
+    if (panel.classList.contains("open")) positionPanel();
     return next;
   }
 
@@ -4524,27 +4527,43 @@
   const savedWidgetPosition = storedWidgetPosition();
   if (savedWidgetPosition) moveWidget(savedWidgetPosition.left, savedWidgetPosition.top);
 
-  /** Anchors the panel to whichever side of the icon has room for it, so a widget
-   * dragged to the left or top edge does not open its panel past the window. */
+  /**
+   * Anchors the open panel inside the viewport so it is never clipped.
+   *
+   * The panel is `position: fixed`, so it is placed against the window edges
+   * directly rather than through the icon's box. It prefers the side of the icon
+   * that has room — above by default, below when there is not enough room above —
+   * and is then clamped into the viewport on both axes. The CSS already caps the
+   * panel to the window, so the clamp always has a valid spot to land on.
+   */
   function positionPanel() {
+    const margin = 8; // keep this much clear of every window edge
+    const gap = 10; // space between the icon and the panel
+    const width = panel.offsetWidth;
+    const height = panel.offsetHeight;
     const rect = root.getBoundingClientRect();
-    panel.style.left = "";
-    panel.style.right = "";
-    panel.style.top = "";
-    panel.style.bottom = "";
-    // Anchored to the side that actually has room, measured against the panel's
-    // own size. `right: 0` grows the panel leftward from the icon's right edge, so
-    // it needs that much space to the left; `left: 0` mirrors it to the right.
-    panel.style[rect.right >= panel.offsetWidth ? "right" : "left"] = "0";
-    // Vertical works the same way: `bottom: 50px` sits the panel above the icon,
-    // so the room it needs is the distance from the viewport top down to the
-    // icon's bottom edge. Near the top the panel flips below instead.
-    panel.style[rect.bottom >= panel.offsetHeight ? "bottom" : "top"] = "50px";
+
+    // Right-align the panel with the icon and grow it leftward; flip to grow
+    // rightward when the left side has no room. The clamp keeps it on screen.
+    let left = rect.right - width;
+    if (left < margin) left = rect.left;
+    left = Math.min(Math.max(margin, left), Math.max(margin, window.innerWidth - width - margin));
+
+    // Prefer above the icon; drop below it when the space above cannot hold the
+    // panel. The clamp then pulls it back inside the window.
+    let top = rect.top - gap - height;
+    if (top < margin) top = rect.bottom + gap;
+    top = Math.min(Math.max(margin, top), Math.max(margin, window.innerHeight - height - margin));
+
+    panel.style.left = `${Math.round(left)}px`;
+    panel.style.top = `${Math.round(top)}px`;
+    panel.style.right = "auto";
+    panel.style.bottom = "auto";
   }
 
-  function wireDrag(handle, canStart) {
+  function wireDrag(handle) {
     handle.addEventListener("pointerdown", (event) => {
-      if (event.button !== 0 || (canStart && !canStart(event))) return;
+      if (event.button !== 0) return;
       const rect = root.getBoundingClientRect();
       dragState = {
         x: event.clientX,
@@ -4584,16 +4603,19 @@
     handle.addEventListener("pointercancel", finish);
   }
 
+  // Only the icon drags the widget. The header used to drag it too, which moved
+  // the icon on any click inside the header that drifted a few pixels.
   wireDrag(fab);
-  // Buttons in the header keep their own click, so drags starting on one are left
-  // alone — otherwise the close button would become a drag handle.
-  wireDrag(header, (event) => !event.target.closest("button, a, input, select"));
 
   // A window that shrank can leave the widget past the new edge, so it is pulled
-  // back. The stored value is left as it is: the window may grow again.
+  // back. The stored value is left as it is: the window may grow again. The open
+  // panel is re-anchored too, so a resize never leaves it clipped.
   window.addEventListener("resize", () => {
-    if (!root.style.left) return;
-    moveWidget(root.getBoundingClientRect().left, root.getBoundingClientRect().top);
+    if (root.style.left) {
+      const rect = root.getBoundingClientRect();
+      moveWidget(rect.left, rect.top);
+    }
+    if (panel.classList.contains("open")) positionPanel();
   });
 
   fab.addEventListener("click", () => {
