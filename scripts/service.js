@@ -88,7 +88,7 @@ import {
 } from "../src/lib/cli-args.js";
 import { writeTextAtomic, readTextFile, writeJsonAtomic } from "../src/lib/json-file.js";
 import { buildTrayConfig } from "../src/lib/tray-config.js";
-import { buildTrayIco } from "../src/lib/tray-icon.js";
+import { loadAppIcon } from "../src/lib/app-icon.js";
 import {
   DATA_DIR,
   DAEMON_LOG_PATH,
@@ -515,7 +515,7 @@ async function commandTray() {
     }
     await fs.rm(TRAY_PID_PATH, { force: true }).catch(() => {});
   }
-  await fs.writeFile(TRAY_ICON_PATH, buildTrayIco({ size: 32 }));
+  await fs.writeFile(TRAY_ICON_PATH, await loadAppIcon());
   const config = buildTrayConfig({
     nodePath: process.execPath,
     serviceArgs: serviceBaseArgs(),

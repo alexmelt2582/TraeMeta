@@ -1,6 +1,6 @@
 {
   "name": "trae-meta",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "private": true,
   "description": "Trae Meta: desktop enhancement assistant for the merged TRAE (Trae CN)",
   "type": "module",
@@ -23,7 +23,9 @@
   },
   "devDependencies": {
     "esbuild": "^0.28.2",
-    "postject": "^1.0.0-alpha.6"
+    "jpeg-js": "^0.4.4",
+    "postject": "^1.0.0-alpha.6",
+    "rcedit": "^5.0.1"
   },
   "dependencies": {
     "undici": "7.30.0"
