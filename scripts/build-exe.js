@@ -18,6 +18,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { buildLaunchVbs, LAUNCH_VBS_NAME } from "../src/lib/autostart.js";
+import { APP_ICON_ASSET_KEY } from "../src/lib/app-icon.js";
 
 const execFileAsync = promisify(execFile);
 const BUILD_SCRIPT_DIR = path.dirname(path.resolve(process.argv[1]));
@@ -38,6 +39,7 @@ const ENTRIES = {
   trayScript: path.join(PROJECT_ROOT, "scripts", "tray.ps1"),
   cmdEntry: path.join(PROJECT_ROOT, "scripts", "trae-meta.cmd"),
   readme: path.join(PROJECT_ROOT, "README.md"),
+  icon: path.join(PROJECT_ROOT, "assets", "icon.ico"),
 };
 
 /**
@@ -108,6 +110,7 @@ async function writeSeaConfig() {
     disableExperimentalSEAWarning: true,
     assets: {
       "inject.js": ENTRIES.injectSource,
+      [APP_ICON_ASSET_KEY]: ENTRIES.icon,
     },
   };
   await fs.writeFile(SEA_CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`, "utf8");
@@ -132,12 +135,67 @@ async function verifyBlobEmbedsAssets() {
       `the preparation blob does not contain ${INJECT_MARKER}; the renderer script was not embedded`,
     );
   }
-  log(`blob embeds the renderer script (found ${INJECT_MARKER})`);
+  await assertExists(ENTRIES.icon, "the application icon");
+  const icon = await fs.readFile(ENTRIES.icon);
+  if (!blob.includes(icon)) {
+    throw new Error(
+      `the preparation blob does not contain ${APP_ICON_ASSET_KEY}; the tray icon was not embedded`,
+    );
+  }
+  log(`blob embeds the renderer script and the tray icon (${APP_ICON_ASSET_KEY})`);
+}
+
+/** Reads the image payloads out of a multi-size ICO file. */
+function readIcoImages(ico) {
+  const count = ico.readUInt16LE(4);
+  const images = [];
+  for (let index = 0; index < count; index += 1) {
+    const entry = 6 + index * 16;
+    const length = ico.readUInt32LE(entry + 8);
+    const offset = ico.readUInt32LE(entry + 12);
+    images.push(ico.subarray(offset, offset + length));
+  }
+  return images;
+}
+
+async function copyNodeExecutable() {
+  await fs.copyFile(process.execPath, EXE_PATH);
+}
+
+/**
+ * Replaces the icon node.exe was copied with, before the blob is injected: the
+ * same file feeds the tray host and the installer shortcuts, so shipping a
+ * Node-branded executable would be the first thing a user notices.
+ */
+async function applyExeIcon() {
+  await assertExists(ENTRIES.icon, "the application icon");
+  let rcedit;
+  try {
+    ({ rcedit } = await import("rcedit"));
+  } catch {
+    throw new Error(
+      "rcedit is not installed. Run `npm install` before building the executable.",
+    );
+  }
+  await rcedit(EXE_PATH, { icon: ENTRIES.icon });
+
+  // Falsifiable: rcedit is a separate process, so "it exited zero" is not
+  // evidence. Every ICO image must appear in the produced executable — a
+  // node.exe copy that was never touched carries none of them.
+  const images = readIcoImages(await fs.readFile(ENTRIES.icon));
+  if (!images.length) throw new Error(`${ENTRIES.icon} contains no icon images`);
+  const produced = await fs.readFile(EXE_PATH);
+  const missing = images.findIndex((image) => !produced.includes(image));
+  if (missing >= 0) {
+    throw new Error(
+      `icon image ${missing + 1} of ${images.length} is missing from ${EXE_NAME}; the icon was not applied`,
+    );
+  }
+  log(`applied the application icon (${images.length} sizes)`);
 }
 
 async function injectBlob() {
   await assertExists(ENTRIES.postjectCli, "the postject CLI");
-  await fs.copyFile(process.execPath, EXE_PATH);
   const { stdout } = await execFileAsync(
     process.execPath,
     [
@@ -227,6 +285,8 @@ async function main() {
   await writeSeaConfig();
   await generateBlob();
   await verifyBlobEmbedsAssets();
+  await copyNodeExecutable();
+  await applyExeIcon();
   await injectBlob();
   await verifyExecutableRuns();
   await cleanupVerificationState();

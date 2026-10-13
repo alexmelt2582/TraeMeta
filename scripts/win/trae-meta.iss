@@ -24,6 +24,9 @@
 #ifndef OutputBaseFilename
   #define OutputBaseFilename "TraeMeta-Setup"
 #endif
+#ifndef IconFile
+  #error IconFile must be supplied by the build script
+#endif
 
 #define ProductName "Trae Meta"
 #define ProductExe "TraeMeta.exe"
@@ -36,6 +39,7 @@ AppVerName={#ProductName} {#AppVersion}
 AppPublisher={#ProductName}
 DefaultDirName={localappdata}\Programs\{#ProductName}
 DefaultGroupName={#ProductName}
+SetupIconFile={#IconFile}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 UsePreviousAppDir=yes
@@ -72,9 +76,10 @@ Source: "{#StageRoot}\scripts\launch-hidden.vbs"; DestDir: "{app}\scripts"; Flag
 [Icons]
 ; 两个启动项都指向隐藏启动器，而不是可执行文件：可执行文件是控制台子系统程序，
 ; 直接启动必定弹出黑窗口。停止项保留控制台是刻意的——用户点了停止，应当看到结果。
-Name: "{group}\{#ProductName}"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\scripts\launch-hidden.vbs"""; WorkingDir: "{app}"; Comment: "启动 Trae CN 与增强面板"
+; 图标则取自 TraeMeta.exe：图标资源嵌在它里面，与托盘、安装包共用同一个 ico。
+Name: "{group}\{#ProductName}"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\scripts\launch-hidden.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\{#ProductExe}"; Comment: "启动 Trae CN 与增强面板"
 Name: "{group}\停止后台服务"; Filename: "{app}\{#ProductExe}"; Parameters: "stop"; WorkingDir: "{app}"
-Name: "{userdesktop}\{#ProductName}"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\scripts\launch-hidden.vbs"""; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{userdesktop}\{#ProductName}"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\scripts\launch-hidden.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\{#ProductExe}"; Tasks: desktopicon
 
 [Run]
 Filename: "{sys}\wscript.exe"; Parameters: """{app}\scripts\launch-hidden.vbs"""; WorkingDir: "{app}"; Description: "立即启动 Trae CN 与增强面板"; Flags: nowait postinstall skipifsilent

@@ -28,6 +28,7 @@ const ISS_PATH = path.join(HERE, "trae-meta.iss");
 const LANGUAGE_PATH = path.join(HERE, "ChineseSimplified.isl");
 const EXE_NAME = "TraeMeta.exe";
 const OUTPUT_BASE = "TraeMeta-Setup";
+const ICON_PATH = path.join(PROJECT_ROOT, "assets", "icon.ico");
 
 /** Files the installer claims to package. Missing any of them is a hard error. */
 const REQUIRED_PAYLOAD = [
@@ -79,6 +80,13 @@ async function assertPayload() {
   log(`payload: ${EXE_NAME} (${(stat.size / 1048576).toFixed(1)} MB)`);
 }
 
+async function assertIcon() {
+  if (!(await isFile(ICON_PATH))) {
+    throw new Error(`安装包图标不存在：${ICON_PATH}`);
+  }
+  log(`向导图标：${path.relative(PROJECT_ROOT, ICON_PATH)}`);
+}
+
 async function ensureScriptBom() {
   const bytes = await fs.readFile(ISS_PATH);
   if (bytes.subarray(0, 3).equals(UTF8_BOM)) {
@@ -124,6 +132,7 @@ async function compile(isccPath, version) {
     `/DOutputDir=${OUTPUT_DIR}`,
     `/DAppVersion=${version}`,
     `/DOutputBaseFilename=${OUTPUT_BASE}`,
+    `/DIconFile=${ICON_PATH}`,
     ISS_PATH,
   ];
   log(`ISCC: ${isccPath}`);
@@ -160,6 +169,7 @@ async function main() {
   const version = await readProjectVersion();
   await fs.mkdir(OUTPUT_DIR, { recursive: true });
   await assertPayload();
+  await assertIcon();
   await ensureScriptBom();
   await reportLanguageFile();
   const isccPath = await findIscc();

@@ -107,8 +107,25 @@ test("the installer launches through the hidden entry point, not the executable"
   assert.equal(launching.length, 3, "expected the two shortcuts and the post-install run");
   for (const line of launching) {
     assert.ok(line.includes("launch-hidden.vbs"), line);
-    assert.equal(line.includes("{#ProductExe}"), false, line);
+    // `Filename` is what gets run and must stay the launcher; the icon is a
+    // separate field and is allowed to point back at the executable.
+    const target = line.match(/(?<!Icon)Filename:\s*"([^"]*)"/);
+    assert.ok(target, line);
+    assert.equal(target[1].includes("{#ProductExe}"), false, line);
+    if (line.startsWith("Name: ")) {
+      assert.ok(line.includes('IconFilename: "{app}\\{#ProductExe}"'), line);
+    }
   }
+});
+
+test("the installer wizard takes its icon from the build script's /DIconFile", async () => {
+  const iss = (await read("scripts/win/trae-meta.iss")).toString("utf8");
+  const build = (await read("scripts/win/build-installer.js")).toString("utf8");
+
+  // Both halves must agree: a `SetupIconFile` with no matching /D value is an
+  // ISCC error, so a rename on one side has to fail here rather than at build.
+  assert.match(iss, /SetupIconFile=\{#IconFile\}/);
+  assert.match(build, /\/DIconFile=\$\{ICON_PATH\}/);
 });
 
 test("the portable release archive lists its payload instead of the whole folder", async () => {
