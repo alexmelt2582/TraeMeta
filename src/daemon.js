@@ -81,7 +81,6 @@ import {
   isKeepaliveDue,
   parseDuration,
 } from "./lib/trae-keepalive.js";
-import { TraeFakeLogoutManager } from "./lib/trae-fake-logout.js";
 import {
   readAuthFromSnapshot,
   refreshAccountKeepalive,
@@ -90,10 +89,9 @@ import {
   refreshAuthSnapshotIfNeeded,
 } from "./lib/trae-refresh.js";
 import {
-  findTraeProcessIds,
   probeCockpitTools,
   startTraeWithCdp,
-  stopTraeForRestart,
+  stopTraeImmediately,
   traeExecutableExists,
   waitForCdp,
 } from "./lib/trae-process.js";
@@ -118,7 +116,6 @@ const STORAGE_PATH = process.env.TRAEMETA_ENHANCER_STORAGE_PATH || DEFAULT_STORA
 let TRAE_EXE = process.env.TRAEMETA_ENHANCER_TRAE_EXE || DEFAULT_TRAE_EXE;
 const API_TOKEN_PATH = path.join(DATA_DIR, "api-token");
 const LEGACY_TRANSACTION_DIR = path.join(DATA_DIR, "transactions");
-const FAKE_LOGOUT_SESSION_PATH = path.join(DATA_DIR, "fake-logout", "session.json");
 const MAX_REQUEST_BODY_BYTES = 32 * 1024 * 1024;
 const AUTO_KEEPALIVE_ENABLED = process.env.TRAEMETA_ENHANCER_AUTO_KEEPALIVE !== "0";
 const AUTO_KEEPALIVE_INTERVAL_MS = parseDuration(
@@ -660,6 +657,15 @@ function scheduleDaemonRestart() {
   return { restarting: true, alreadyRequested: false, pid: process.pid, helperPid };
 }
 
+/**
+ * Stops TRAE on an account switch.
+ *
+ * A switch force-closes the TRAE the user is looking at, so it kills outright
+ * instead of asking the window to close: closing it only parks the app in the
+ * notification area, which means the graceful path never quits and the kill runs
+ * late anyway — the waiting was the only thing it ever added. One PowerShell call
+ * does find → kill → verify, which is what keeps the switch feeling instant.
+ */
 async function stopTraeForSwitch() {
   if (!(await traeExecutableExists(TRAE_EXE))) {
     throw new Error(
@@ -670,13 +676,8 @@ async function stopTraeForSwitch() {
       ].join("\n"),
     );
   }
-  await stopTraeForRestart(TRAE_EXE);
-  await delay(700);
-  if ((await findTraeProcessIds(TRAE_EXE)).length) {
-    await stopTraeForRestart(TRAE_EXE);
-    await delay(700);
-  }
-  if ((await findTraeProcessIds(TRAE_EXE)).length) {
+  const remaining = await stopTraeImmediately(TRAE_EXE);
+  if (remaining.length) {
     throw new Error("Trae CN did not remain fully stopped");
   }
 }
@@ -692,8 +693,12 @@ async function restartTraeForSwitch() {
 }
 
 async function switchAccount(accountId) {
+  const startedAt = Date.now();
+  const elapsed = () => `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
   const account = await accountStore.findAccount(accountId);
   if (!account) throw new Error("Account backup was not found");
+  const label = account.displayName || account.email || account.userId || accountId;
+  console.log(`[switch] 开始切换账号「${label}」`);
   let snapshot = normalizeAuthSnapshotForInjection(
     await accountStore.readSnapshot(accountId),
   );
@@ -708,7 +713,9 @@ async function switchAccount(accountId) {
     );
   }
 
+  console.log(`[switch] 凭据就绪，正在停止 TRAE（已用时 ${elapsed()}）`);
   await stopTraeForSwitch();
+  console.log(`[switch] TRAE 已停止，正在写入账号状态（已用时 ${elapsed()}）`);
   let transaction;
   try {
     transaction = await applyAuthSnapshot({
@@ -722,10 +729,12 @@ async function switchAccount(accountId) {
 
   try {
     await startTraeForSwitch();
+    console.log(`[switch] TRAE 已重启，正在校验登录状态（已用时 ${elapsed()}）`);
     const verification = await waitForStorageIdentity(STORAGE_PATH, account.userId);
     if (!verification.ok) {
       throw new Error("TRAE did not accept the selected account after restart");
     }
+    console.log(`[switch] 切换完成「${label}」（总用时 ${elapsed()}）`);
     return {
       account,
       transactionId: transaction.transactionId,
@@ -733,6 +742,7 @@ async function switchAccount(accountId) {
       refreshWarning: null,
     };
   } catch (error) {
+    console.log(`[switch] 切换失败，正在回滚到原账号：${error.message || error}`);
     await stopTraeForSwitch().catch(() => {});
     await rollbackAuthSnapshot(STORAGE_PATH, transaction);
     await restartTraeForSwitch().catch(() => false);
@@ -1201,7 +1211,7 @@ async function runAccountKeepalive(
   }
 }
 
-async function route(request, response, apiToken, cdpClient, oauthManager, fakeLogoutManager) {
+async function route(request, response, apiToken, cdpClient, oauthManager) {
   const requestUrl = new URL(request.url || "/", `http://${LOOPBACK_HOST}:${UI_PORT}`);
   const pathname = requestUrl.pathname;
 
@@ -1317,7 +1327,6 @@ async function route(request, response, apiToken, cdpClient, oauthManager, fakeL
       switchInFlight ||
       loginStartInFlight ||
       oauthManager.isActive() ||
-      fakeLogoutManager.isActive() ||
       insightsRefreshInFlight ||
       checkinInFlight ||
       keepaliveInFlight ||
@@ -1375,7 +1384,6 @@ async function route(request, response, apiToken, cdpClient, oauthManager, fakeL
       switchInFlight ||
       loginStartInFlight ||
       oauthManager.isActive() ||
-      fakeLogoutManager.isActive() ||
       insightsRefreshInFlight ||
       checkinInFlight ||
       keepaliveInFlight ||
@@ -1472,13 +1480,6 @@ async function route(request, response, apiToken, cdpClient, oauthManager, fakeL
       jsonResponse(response, 409, { ok: false, error: "助手更新正在安装，请稍后再试" });
       return;
     }
-    if (fakeLogoutManager.isActive()) {
-      jsonResponse(response, 409, {
-        ok: false,
-        error: "A fake logout login flow is already running",
-      });
-      return;
-    }
     if (insightsRefreshInFlight) {
       jsonResponse(response, 409, { ok: false, error: "Account insights are already refreshing" });
       return;
@@ -1526,13 +1527,6 @@ async function route(request, response, apiToken, cdpClient, oauthManager, fakeL
       });
       return;
     }
-    if (fakeLogoutManager.isActive()) {
-      jsonResponse(response, 409, {
-        ok: false,
-        error: "A fake logout login flow is already running",
-      });
-      return;
-    }
     if (insightsRefreshInFlight) {
       jsonResponse(response, 409, { ok: false, error: "Account insights are already refreshing" });
       return;
@@ -1567,13 +1561,6 @@ async function route(request, response, apiToken, cdpClient, oauthManager, fakeL
       jsonResponse(response, 409, {
         ok: false,
         error: "A seamless login flow is already running",
-      });
-      return;
-    }
-    if (fakeLogoutManager.isActive()) {
-      jsonResponse(response, 409, {
-        ok: false,
-        error: "A fake logout login flow is already running",
       });
       return;
     }
@@ -1630,7 +1617,6 @@ async function route(request, response, apiToken, cdpClient, oauthManager, fakeL
       switchInFlight ||
       loginStartInFlight ||
       oauthManager.isActive() ||
-      fakeLogoutManager.isActive() ||
       insightsRefreshInFlight ||
       checkinInFlight ||
       keepaliveInFlight ||
@@ -1712,10 +1698,10 @@ async function route(request, response, apiToken, cdpClient, oauthManager, fakeL
       jsonResponse(response, 409, { ok: false, error: "助手更新正在安装，请稍后再试" });
       return;
     }
-    if (fakeLogoutManager.isActive()) {
+    if (loginStartInFlight || oauthManager.isActive()) {
       jsonResponse(response, 409, {
         ok: false,
-        error: "A fake logout login flow is already running",
+        error: "登录流程正在进行，请先完成或取消再切换账号",
       });
       return;
     }
@@ -1731,67 +1717,6 @@ async function route(request, response, apiToken, cdpClient, oauthManager, fakeL
     return;
   }
 
-  if (request.method === "POST" && pathname === "/api/fake-logout/start") {
-    if (switchInFlight) {
-      jsonResponse(response, 409, { ok: false, error: "An account switch is already running" });
-      return;
-    }
-    if (checkinInFlight) {
-      jsonResponse(response, 409, { ok: false, error: "Account check-in is already running" });
-      return;
-    }
-    if (keepaliveInFlight) {
-      jsonResponse(response, 409, { ok: false, error: "Account keepalive is already running" });
-      return;
-    }
-    if (isInstallBusy()) {
-      jsonResponse(response, 409, { ok: false, error: "助手更新正在安装，请稍后再试" });
-      return;
-    }
-    if (loginStartInFlight) {
-      jsonResponse(response, 409, { ok: false, error: "A login flow is already starting" });
-      return;
-    }
-    if (oauthManager.isActive()) {
-      jsonResponse(response, 409, {
-        ok: false,
-        error: "A seamless login flow is already running",
-      });
-      return;
-    }
-    loginStartInFlight = fakeLogoutManager.start();
-    try {
-      const result = await loginStartInFlight;
-      jsonResponse(response, 200, { ok: true, ...result });
-    } finally {
-      loginStartInFlight = null;
-    }
-    return;
-  }
-
-  if (request.method === "GET" && pathname === "/api/fake-logout/status") {
-    const sessionId = requestUrl.searchParams.get("sessionId") || "";
-    const status = fakeLogoutManager.status(sessionId);
-    jsonResponse(response, status.status === "missing" ? 404 : 200, {
-      ok: status.status !== "missing",
-      ...status,
-    });
-    return;
-  }
-
-  if (request.method === "GET" && pathname === "/api/fake-logout/active") {
-    const status = fakeLogoutManager.active();
-    jsonResponse(response, 200, { ok: true, ...status });
-    return;
-  }
-
-  if (request.method === "POST" && pathname === "/api/fake-logout/cancel") {
-    const body = await readRequestBody(request);
-    const cancelled = await fakeLogoutManager.cancel(String(body.sessionId || ""));
-    jsonResponse(response, 200, { ok: true, cancelled });
-    return;
-  }
-
   if (request.method === "POST" && pathname === "/api/oauth/start") {
     if (checkinInFlight) {
       jsonResponse(response, 409, { ok: false, error: "Account check-in is already running" });
@@ -1803,13 +1728,6 @@ async function route(request, response, apiToken, cdpClient, oauthManager, fakeL
     }
     if (isInstallBusy()) {
       jsonResponse(response, 409, { ok: false, error: "助手更新正在安装，请稍后再试" });
-      return;
-    }
-    if (fakeLogoutManager.isActive()) {
-      jsonResponse(response, 409, {
-        ok: false,
-        error: "A fake logout login flow is already running",
-      });
       return;
     }
     if (loginStartInFlight) {
@@ -1903,7 +1821,6 @@ async function route(request, response, apiToken, cdpClient, oauthManager, fakeL
       switchInFlight ||
       loginStartInFlight ||
       oauthManager.isActive() ||
-      fakeLogoutManager.isActive() ||
       insightsRefreshInFlight ||
       checkinInFlight ||
       keepaliveInFlight
@@ -2250,7 +2167,6 @@ async function main() {
       switchInFlight ||
       loginStartInFlight ||
       oauthManager.isActive() ||
-      fakeLogoutManager.isActive() ||
       insightsRefreshInFlight ||
       checkinInFlight ||
       keepaliveInFlight ||
@@ -2482,28 +2398,10 @@ async function main() {
     onAccountSaved: (account, metadata) =>
       synchronizeSavedAccount(account, { source: metadata?.source || "oauth" }),
   });
-  const fakeLogoutManager = new TraeFakeLogoutManager({
-    accountStore,
-    storagePath: STORAGE_PATH,
-    stopTrae: stopTraeForSwitch,
-    startTrae: startTraeForSwitch,
-    isTraeRunning: async () => (await findTraeProcessIds(TRAE_EXE)).length > 0,
-    getLiveIdentity: () => cdpClient.getLiveIdentity(),
-    sessionPath: FAKE_LOGOUT_SESSION_PATH,
-    onAccountSaved: (account, metadata) =>
-      synchronizeSavedAccount(account, { source: metadata?.source || "fake-logout" }),
-  });
   cdpClient.start();
 
   const server = http.createServer((request, response) => {
-    route(
-      request,
-      response,
-      apiToken,
-      cdpClient,
-      oauthManager,
-      fakeLogoutManager,
-    ).catch((error) => {
+    route(request, response, apiToken, cdpClient, oauthManager).catch((error) => {
       jsonResponse(response, 500, {
         ok: false,
         error: error instanceof Error ? error.message : String(error),
@@ -2558,7 +2456,7 @@ async function main() {
         });
       },
     };
-    route(request, response, apiToken, cdpClient, oauthManager, fakeLogoutManager).catch(
+    route(request, response, apiToken, cdpClient, oauthManager).catch(
       (error) => {
         if (responded) return;
         responded = true;
@@ -2584,13 +2482,6 @@ async function main() {
   );
   if (accountRepair.repaired) {
     console.log(`[cleanup] repaired account metadata: ${accountRepair.repaired}`);
-  }
-  const recoveredFakeLogout = await fakeLogoutManager.recover();
-  if (recoveredFakeLogout.status !== "missing") {
-    console.log(
-      `[fake-logout] recovered session status=${recoveredFakeLogout.status}`,
-    );
-    await cdpClient.inject().catch(() => false);
   }
 
   // TRAE's auto-update is switched off here rather than lazily, so the panel can
@@ -2628,7 +2519,6 @@ async function main() {
         switchInFlight ||
         loginStartInFlight ||
         oauthManager.isActive() ||
-        fakeLogoutManager.isActive() ||
         insightsRefreshInFlight ||
         checkinInFlight ||
         keepaliveInFlight ||
