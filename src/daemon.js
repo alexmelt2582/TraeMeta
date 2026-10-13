@@ -300,11 +300,14 @@ async function notifyPanel(cdpClient, event, detail) {
   }
   const payload = detail === undefined ? "{}" : JSON.stringify(detail);
   try {
-    await cdpClient.evaluate(
+    // Broadcast: TRAE may have several windows open (Code workbenches and the
+    // Agent page), each with its own panel.
+    const delivered = await cdpClient.broadcast(
       `window.dispatchEvent(new CustomEvent(${JSON.stringify(event)}, { detail: ${payload} }))`,
       { awaitPromise: false, timeoutMs: 3000 },
     );
-    return true;
+    if (!delivered) console.warn(`[push] "${event}" was not delivered to any window`);
+    return delivered;
   } catch (error) {
     console.warn(`[push] failed to deliver "${event}": ${error?.message || error}`);
     return false;

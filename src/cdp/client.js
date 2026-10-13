@@ -22,11 +22,33 @@ async function fetchJson(url, { timeoutMs = 3000 } = {}) {
   }
 }
 
-function isInjectableTarget(target) {
+/**
+ * The merged TRAE client renders the Code workbench and the Agent views in
+ * separate targets, all served from `vscode-file://` so a URL-based match alone
+ * treats every one of them as injectable. `/json/list` is also not ordered, so
+ * picking the first match is unstable.
+ *
+ * The panel is injected into both the Code workbench and the Agent page
+ * (`solo/solo-lite.html`), but never into the Agent's floating windows
+ * (`floatingChat.html`, `floatingButton`): those hover *over* Code, and the panel
+ * must stay clear of them.
+ */
+function isFloatingAgentWindow(target) {
+  const url = String(target?.url || "").toLowerCase();
+  return url.includes("floatingchat") || url.includes("floatingbutton");
+}
+
+function targetPriority(target) {
+  const url = String(target?.url || "").toLowerCase();
+  return url.includes("workbench") ? 2 : 1;
+}
+
+export function isInjectableTarget(target) {
   if (!target || target.type !== "page" || !target.webSocketDebuggerUrl) return false;
   const url = String(target.url || "").toLowerCase();
   const title = String(target.title || "").toLowerCase();
   if (url.startsWith("devtools://")) return false;
+  if (isFloatingAgentWindow(target)) return false;
   return (
     url.includes("workbench") ||
     url.includes("vscode-file") ||
@@ -35,22 +57,55 @@ function isInjectableTarget(target) {
   );
 }
 
+/** Every target the panel should be injected into. TRAE can have more than one
+ * Code window, and each is its own target that needs its own panel. */
+export function injectableTargets(targets) {
+  if (!Array.isArray(targets)) return [];
+  return targets.filter(isInjectableTarget);
+}
+
+/** The single best target, used by the diagnostic script. A workbench window
+ * always wins over any other TRAE surface. */
+export function selectInjectableTarget(targets) {
+  const injectable = injectableTargets(targets);
+  if (!injectable.length) return null;
+  return injectable.reduce(
+    (best, candidate) => (targetPriority(candidate) > targetPriority(best) ? candidate : best),
+    injectable[0],
+  );
+}
+
+/**
+ * One renderer target and its own CDP socket. TRAE exposes every Code window as
+ * a separate target, so injection and event delivery are per-connection.
+ */
+class Connection {
+  constructor(target) {
+    this.id = target.id;
+    this.target = target;
+    this.socket = null;
+    this.connected = false;
+    this.pending = new Map();
+    this.nextId = 1;
+  }
+}
+
 export class CdpClient {
   constructor({ port, getInjectScript, onStateChange = () => {} }) {
     this.port = port;
     this.getInjectScript = getInjectScript;
     this.onStateChange = onStateChange;
-    this.socket = null;
-    this.connected = false;
     this.stopped = true;
-    this.nextId = 1;
-    this.pending = new Map();
     this.loopPromise = null;
-    this.target = null;
+    this.connections = new Map();
+    this.aggregateConnected = false;
   }
 
   get isConnected() {
-    return this.connected;
+    for (const connection of this.connections.values()) {
+      if (connection.connected) return true;
+    }
+    return false;
   }
 
   start() {
@@ -58,14 +113,14 @@ export class CdpClient {
     this.stopped = false;
     this.loopPromise = this.runLoop().finally(() => {
       this.loopPromise = null;
-      this.connected = false;
-      this.onStateChange(false);
+      this.closeAll();
+      this.updateAggregateState(false);
     });
   }
 
   async stop() {
     this.stopped = true;
-    await this.closeSocket();
+    this.closeAll();
     await this.loopPromise?.catch(() => {});
   }
 
@@ -75,35 +130,41 @@ export class CdpClient {
 
   async findTarget() {
     const targets = await this.listTargets();
-    return targets.find(isInjectableTarget) || null;
+    return selectInjectableTarget(targets);
   }
 
+  /**
+   * Keeps one connection per injectable target. New Code windows are picked up
+   * on later scans, and a window that closes drops its connection here.
+   */
   async runLoop() {
     while (!this.stopped) {
       try {
-        const target = await this.findTarget();
-        if (!target) {
-          await delay(1000);
-          continue;
+        const targets = await this.listTargets();
+        const wanted = injectableTargets(targets);
+        const wantedIds = new Set(wanted.map((target) => target.id));
+        for (const id of [...this.connections.keys()]) {
+          if (!wantedIds.has(id)) this.dropConnection(id);
         }
-        this.target = target;
-        await this.connect(target.webSocketDebuggerUrl);
-        await this.inject();
-        while (!this.stopped && this.connected) {
-          await delay(500);
+        for (const target of wanted) {
+          if (this.connections.has(target.id)) continue;
+          try {
+            await this.openConnection(target);
+          } catch {
+            // Retry on the next scan; TRAE may still be mid-navigation.
+          }
         }
       } catch {
-        // Reconnect quietly. The launcher exposes the actionable error state.
+        // The CDP endpoint is unavailable; try again shortly.
       }
-      await this.closeSocket();
-      if (!this.stopped) await delay(1200);
+      await delay(1000);
     }
   }
 
-  async connect(webSocketDebuggerUrl) {
-    await this.closeSocket();
-    const socket = new WebSocket(webSocketDebuggerUrl);
-    this.socket = socket;
+  async openConnection(target) {
+    const connection = new Connection(target);
+    const socket = new WebSocket(target.webSocketDebuggerUrl);
+    connection.socket = socket;
 
     await withTimeout(
       new Promise((resolve, reject) => {
@@ -122,42 +183,73 @@ export class CdpClient {
       "Timed out while connecting to the TRAE CDP socket",
     );
 
-    socket.addEventListener("message", (event) => this.handleMessage(event));
-    socket.addEventListener("close", () => {
-      this.connected = false;
-      this.onStateChange(false);
-      this.rejectPending(new Error("TRAE CDP connection closed"));
-    });
-    socket.addEventListener("error", () => {
-      this.connected = false;
-      this.onStateChange(false);
-    });
+    socket.addEventListener("message", (event) => this.handleMessage(connection, event));
+    socket.addEventListener("close", () => this.dropConnection(connection.id));
+    socket.addEventListener("error", () => this.dropConnection(connection.id));
 
-    this.connected = true;
-    this.onStateChange(true);
-    await this.send("Runtime.enable");
-    await this.send("Page.enable");
+    connection.connected = true;
+    this.connections.set(connection.id, connection);
+    this.updateAggregateState(true);
+
+    await this.send(connection, "Runtime.enable");
+    await this.send(connection, "Page.enable");
+    await this.injectInto(connection).catch(() => {});
   }
 
-  async closeSocket() {
-    const socket = this.socket;
-    this.socket = null;
-    this.connected = false;
-    this.rejectPending(new Error("TRAE CDP connection reset"));
-    if (!socket) return;
+  dropConnection(id) {
+    const connection = this.connections.get(id);
+    if (!connection) return;
+    connection.connected = false;
+    this.rejectPending(connection, new Error("TRAE CDP connection closed"));
     try {
-      socket.close();
+      connection.socket?.close();
     } catch {
       // Node may already have closed the socket.
     }
+    this.connections.delete(id);
+    this.updateAggregateState(this.isConnected);
   }
 
-  rejectPending(error) {
-    for (const { reject } of this.pending.values()) reject(error);
-    this.pending.clear();
+  closeAll() {
+    for (const id of [...this.connections.keys()]) {
+      const connection = this.connections.get(id);
+      connection.connected = false;
+      this.rejectPending(connection, new Error("TRAE CDP connection reset"));
+      try {
+        connection.socket?.close();
+      } catch {
+        // Node may already have closed the socket.
+      }
+      this.connections.delete(id);
+    }
   }
 
-  handleMessage(event) {
+  /**
+   * Ad-hoc single-target connection. Only the diagnostic script uses it, which
+   * attaches to one window and disconnects when done.
+   */
+  async connect(webSocketDebuggerUrl) {
+    await this.openConnection({ id: webSocketDebuggerUrl, webSocketDebuggerUrl });
+  }
+
+  async closeSocket() {
+    this.closeAll();
+  }
+
+  /** Fires only on aggregate transitions, so closing one of several windows does
+   * not look like "CDP went away" and re-trigger the client-load check-in. */
+  updateAggregateState(connected) {
+    if (connected === this.aggregateConnected) return;
+    this.aggregateConnected = connected;
+    this.onStateChange(connected);
+  }
+
+  rejectPending(connection, error) {
+    for (const { reject } of connection.pending.values()) reject(error);
+    connection.pending.clear();
+  }
+
+  handleMessage(connection, event) {
     let message;
     try {
       message = JSON.parse(String(event.data));
@@ -166,42 +258,43 @@ export class CdpClient {
     }
 
     if (message.id) {
-      const pending = this.pending.get(message.id);
+      const pending = connection.pending.get(message.id);
       if (!pending) return;
-      this.pending.delete(message.id);
+      connection.pending.delete(message.id);
       if (message.error) pending.reject(new Error(message.error.message || "CDP command failed"));
       else pending.resolve(message.result);
       return;
     }
 
     if (message.method === "Page.loadEventFired") {
-      this.inject().catch(() => {});
+      this.injectInto(connection).catch(() => {});
     }
   }
 
-  send(method, params = {}, timeoutMs = 5000) {
-    if (!this.socket || !this.connected) {
+  send(connection, method, params = {}, timeoutMs = 5000) {
+    if (!connection?.socket || !connection.connected) {
       return Promise.reject(new Error("TRAE CDP is not connected"));
     }
-    const id = this.nextId++;
+    const id = connection.nextId++;
     const command = JSON.stringify({ id, method, params });
     return withTimeout(
       new Promise((resolve, reject) => {
-        this.pending.set(id, { resolve, reject });
+        connection.pending.set(id, { resolve, reject });
         try {
-          this.socket.send(command);
+          connection.socket.send(command);
         } catch (error) {
-          this.pending.delete(id);
+          connection.pending.delete(id);
           reject(error);
         }
       }),
       timeoutMs,
       `CDP command timed out: ${method}`,
-    ).finally(() => this.pending.delete(id));
+    ).finally(() => connection.pending.delete(id));
   }
 
-  async evaluate(expression, { awaitPromise = true, timeoutMs = 5000 } = {}) {
+  async evaluateOn(connection, expression, { awaitPromise = true, timeoutMs = 5000 } = {}) {
     const result = await this.send(
+      connection,
       "Runtime.evaluate",
       {
         expression,
@@ -221,15 +314,57 @@ export class CdpClient {
     return result.result?.value;
   }
 
-  async inject() {
-    if (!this.connected) return false;
+  /** The window a one-shot read runs against: a Code workbench whenever one is
+   * open, so identity reads do not land on the Agent page. */
+  primaryConnection() {
+    const connected = [...this.connections.values()].filter((connection) => connection.connected);
+    if (!connected.length) return null;
+    return connected.reduce(
+      (best, candidate) =>
+        targetPriority(candidate.target) > targetPriority(best.target) ? candidate : best,
+      connected[0],
+    );
+  }
+
+  /** Runs an expression against the primary window, for one-shot reads. */
+  async evaluate(expression, options = {}) {
+    const connection = this.primaryConnection();
+    if (!connection) throw new Error("TRAE CDP is not connected");
+    return await this.evaluateOn(connection, expression, options);
+  }
+
+  /** Runs an expression against every connected window, for event delivery. */
+  async broadcast(expression, options = {}) {
+    const targets = [...this.connections.values()].filter((connection) => connection.connected);
+    if (!targets.length) return false;
+    const results = await Promise.allSettled(
+      targets.map((connection) => this.evaluateOn(connection, expression, options)),
+    );
+    return results.some((result) => result.status === "fulfilled");
+  }
+
+  async injectInto(connection) {
+    if (!connection.connected) return false;
     const script = await this.getInjectScript();
-    await this.evaluate(script, { awaitPromise: false, timeoutMs: 10000 });
+    await this.evaluateOn(connection, script, { awaitPromise: false, timeoutMs: 10000 });
     return true;
   }
 
+  async inject() {
+    const targets = [...this.connections.values()].filter((connection) => connection.connected);
+    if (!targets.length) return false;
+    const script = await this.getInjectScript();
+    const results = await Promise.allSettled(
+      targets.map((connection) =>
+        this.evaluateOn(connection, script, { awaitPromise: false, timeoutMs: 10000 }),
+      ),
+    );
+    return results.some((result) => result.status === "fulfilled");
+  }
+
   async getLiveIdentity() {
-    if (!this.connected) return null;
+    const connection = this.primaryConnection();
+    if (!connection) return null;
     const expression = `
       (async function () {
         try {
@@ -260,7 +395,10 @@ export class CdpClient {
       })()
     `;
     try {
-      const identity = await this.evaluate(expression, { awaitPromise: true, timeoutMs: 4000 });
+      const identity = await this.evaluateOn(connection, expression, {
+        awaitPromise: true,
+        timeoutMs: 4000,
+      });
       return identity && typeof identity === "object" ? identity : null;
     } catch {
       return null;
