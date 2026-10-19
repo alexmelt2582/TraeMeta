@@ -68,10 +68,23 @@ Name: "autostart"; Description: "登录时自动启动后台服务（用于定�
 
 [Files]
 Source: "{#StageRoot}\{#ProductExe}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#StageRoot}\icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#StageRoot}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#StageRoot}\scripts\trae-meta.cmd"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "{#StageRoot}\scripts\tray.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "{#StageRoot}\scripts\launch-hidden.vbs"; DestDir: "{app}\scripts"; Flags: ignoreversion
+
+[Registry]
+; 通知身份登记。托盘气泡在 Windows 10/11 上由通知平台渲染成 toast，图标按
+; AppUserModelID 解析；没有登记时平台只能启发式归属，覆盖安装换了图标后会把
+; 新图标错配给其他程序的通知。显式登记后解析变成查表命中，只认这份图标。
+; 托盘宿主（tray.ps1）启动时通过 SetCurrentProcessExplicitAppUserModelID
+; 使用同一个 ID。HKCU 免管理员；卸载时整个键随之删除。
+; IconUri 与 IconResource 都写：不同 Windows 版本读取的值名不同，两个都写
+; 覆盖 10/11 全部情况；IconUri 支持 .ico 文件路径。
+Root: HKCU; Subkey: "SOFTWARE\Classes\AppUserModelId\TraeMeta.Tray"; ValueType: string; ValueName: "DisplayName"; ValueData: "Trae Meta"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "SOFTWARE\Classes\AppUserModelId\TraeMeta.Tray"; ValueType: string; ValueName: "IconUri"; ValueData: "{app}\icon.ico"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "SOFTWARE\Classes\AppUserModelId\TraeMeta.Tray"; ValueType: string; ValueName: "IconResource"; ValueData: "{app}\icon.ico"; Flags: uninsdeletekey
 
 [Icons]
 ; 两个启动项都指向隐藏启动器，而不是可执行文件：可执行文件是控制台子系统程序，
@@ -511,12 +524,19 @@ begin
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
 begin
   if CurStep = ssPostInstall then
   begin
     PersistTraePath();
     EnableAutostart();
     RestoreServiceAfterUpgrade();
+    { 覆盖安装换了图标资源后，Windows 图标缓存可能继续把新图标错配给其他程序
+      的通知。ie4uinit -show 是每用户的轻量缓存刷新：不重启资源管理器、不删
+      文件、不打断任何程序。每台机器升级安装时自动执行，无需手工逐台处理。 }
+    if not Exec(ExpandConstant('{sys}\ie4uinit.exe'), '-show', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+      Log('unable to refresh the icon cache');
   end;
 end;
 

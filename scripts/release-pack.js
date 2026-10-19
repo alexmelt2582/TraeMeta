@@ -49,6 +49,7 @@ function versionDir(version) {
  */
 const PORTABLE_PAYLOAD = [
   "TraeMeta.exe",
+  "icon.ico",
   "README.md",
   "scripts/trae-meta.cmd",
   "scripts/tray.ps1",

@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { injectableTargets, isInjectableTarget, selectInjectableTarget } from "../src/cdp/client.js";
+import {
+  PANEL_ALIVE_EXPRESSION,
+  PANEL_ROOT_ID,
+  injectableTargets,
+  isInjectableTarget,
+  selectInjectableTarget,
+} from "../src/cdp/client.js";
 
 /**
  * These reproduce the real `/json/list` shapes of the merged Trae CN client: the
@@ -98,4 +104,11 @@ test("devtools and non-page targets are never injectable", () => {
   );
   assert.equal(isInjectableTarget(WORKER), false);
   assert.equal(isInjectableTarget({ type: "page", url: WORKBENCH.url }), false);
+});
+
+test("the liveness probe looks for the same root node the injected panel creates", () => {
+  // ROOT_ID in src/ui/inject.js. If the two ever drift, the probe would report
+  // every healthy panel as missing and re-inject it once per scan.
+  assert.equal(PANEL_ROOT_ID, "traemeta-root");
+  assert.match(PANEL_ALIVE_EXPRESSION, /getElementById\("traemeta-root"\)/);
 });

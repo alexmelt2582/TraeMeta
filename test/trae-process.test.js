@@ -6,6 +6,7 @@ import {
   isCockpitImageName,
   normalizeImageBaseName,
   parseTasklistImageNames,
+  startTraeWithCdp,
 } from "../src/lib/trae-process.js";
 
 test("an image base name loses its directory and .exe suffix", () => {
@@ -53,4 +54,31 @@ test("tasklist CSV rows are read through their quoted first column", () => {
 test("an empty tasklist output yields no names", () => {
   assert.deepEqual(parseTasklistImageNames(""), []);
   assert.deepEqual(parseTasklistImageNames(undefined), []);
+});
+
+test("a spawn failure settles immediately instead of waiting out the CDP budget", async () => {
+  const startedAt = Date.now();
+  const logs = [];
+  const result = await startTraeWithCdp("Z:\\definitely\\missing\\Trae CN.exe", 49152, {
+    log: (message) => logs.push(message),
+    waitTimeoutMs: 8000,
+  });
+  assert.equal(result, null);
+  assert.ok(Date.now() - startedAt < 6000, "spawn failure must fail fast, not wait out the budget");
+  assert.ok(logs.some((line) => line.includes("启动失败")), JSON.stringify(logs));
+});
+
+test("a process that exits during startup is reported before the CDP budget expires", async () => {
+  const startedAt = Date.now();
+  const logs = [];
+  // node.exe rejects both injected flags outright and dies within moments —
+  // exactly the "杀掉之后拉不起来" signature the switch path must not sit on
+  // for the whole CDP budget before reporting a vague port timeout.
+  const result = await startTraeWithCdp(process.execPath, 49153, {
+    log: (message) => logs.push(message),
+    waitTimeoutMs: 8000,
+  });
+  assert.equal(result, null);
+  assert.ok(Date.now() - startedAt < 6000, "early exit must fail fast, not wait out the budget");
+  assert.ok(logs.some((line) => line.includes("启动阶段退出")), JSON.stringify(logs));
 });

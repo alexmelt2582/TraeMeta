@@ -128,6 +128,45 @@ test("the installer wizard takes its icon from the build script's /DIconFile", a
   assert.match(build, /\/DIconFile=\$\{ICON_PATH\}/);
 });
 
+test("the installer registers the notification identity and ships its icon file", async () => {
+  const iss = (await read("scripts/win/trae-meta.iss")).toString("utf8");
+
+  // Without an explicit AppUserModelID the notification platform attributes
+  // toasts heuristically, and a freshly installed icon leaks into other apps'
+  // notifications. The registration and the tray host (tray.ps1) must use the
+  // same ID.
+  assert.match(iss, /Subkey: "SOFTWARE\\Classes\\AppUserModelId\\TraeMeta\.Tray"/);
+  assert.match(iss, /ValueName: "DisplayName"/);
+  // IconUri and IconResource are both written because Windows versions read
+  // different value names.
+  assert.match(iss, /ValueName: "IconUri"/);
+  assert.match(iss, /ValueName: "IconResource"/);
+  assert.match(iss, /ValueData: "\{app\}\\icon\.ico"/);
+  // The identity points at an installed file, so the icon must ship.
+  assert.match(iss, /Source: "\{#StageRoot\}\\icon\.ico"/);
+  assert.match(iss, /Flags: uninsdeletekey/, "the registry key must go away on uninstall");
+});
+
+test("the installer refreshes the icon cache after every install", async () => {
+  const iss = (await read("scripts/win/trae-meta.iss")).toString("utf8");
+  // ie4uinit -show is the gentle per-user refresh: no Explorer restart, no file
+  // deletion, run automatically on every machine so upgrades heal their own
+  // icon cache.
+  assert.match(iss, /ie4uinit\.exe/);
+  assert.match(iss, /'-show'/);
+});
+
+test("the tray host pins the notification identity before creating a window", async () => {
+  const ps1 = (await read("scripts/tray.ps1")).toString("ascii");
+
+  const pinIndex = ps1.indexOf("SetCurrentProcessExplicitAppUserModelID('TraeMeta.Tray')");
+  const notifyIndex = ps1.indexOf("New-Object System.Windows.Forms.NotifyIcon");
+  assert.ok(pinIndex !== -1, "the tray host must pin the AppUserModelID");
+  // SetCurrentProcessExplicitAppUserModelID fails once the process owns a
+  // window, and NotifyIcon creates one, so the order is load-bearing.
+  assert.ok(pinIndex < notifyIndex, "the AUMID must be set before the NotifyIcon is created");
+});
+
 test("the portable release archive lists its payload instead of the whole folder", async () => {
   const text = (await read("scripts/release-pack.js")).toString("utf8");
 
