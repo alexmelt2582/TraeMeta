@@ -93,7 +93,6 @@ import {
   startTraeWithCdp,
   stopTraeImmediately,
   traeExecutableExists,
-  waitForCdp,
 } from "./lib/trae-process.js";
 import { TraeOAuthManager } from "./lib/trae-oauth.js";
 import {
@@ -668,6 +667,11 @@ function scheduleDaemonRestart() {
  * notification area, which means the graceful path never quits and the kill runs
  * late anyway — the waiting was the only thing it ever added. One PowerShell call
  * does find → kill → verify, which is what keeps the switch feeling instant.
+ *
+ * The PowerShell call itself fails open-endedly now and then: 杀毒软件拦住
+ * powershell.exe 启动时，整次调用会卡满超时（2026-10-19 两次切换停在停止步骤、
+ * 日志零痕迹就是这种现场）。所以失败先留下原因，再整体重试一次；两次都失败才
+ * 放弃——此时 TRAE 仍在运行、旧账号未动，重试切换即可恢复。
  */
 async function stopTraeForSwitch() {
   if (!(await traeExecutableExists(TRAE_EXE))) {
@@ -679,15 +683,32 @@ async function stopTraeForSwitch() {
       ].join("\n"),
     );
   }
-  const remaining = await stopTraeImmediately(TRAE_EXE);
+  let remaining;
+  try {
+    remaining = await stopTraeImmediately(TRAE_EXE);
+  } catch (error) {
+    console.log(`[switch] 停止 TRAE 首次尝试失败：${error?.message || error}，1.5s 后重试`);
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    remaining = await stopTraeImmediately(TRAE_EXE);
+  }
   if (remaining.length) {
-    throw new Error("Trae CN did not remain fully stopped");
+    console.log(`[switch] TRAE 进程强杀后仍存活（pid: ${remaining.join(", ")}），重试强杀`);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    remaining = await stopTraeImmediately(TRAE_EXE);
+  }
+  if (remaining.length) {
+    throw new Error(`TRAE 进程未能完全退出（pid: ${remaining.join(", ")}），请手动关闭 Trae CN 后重试切换`);
   }
 }
 
 async function startTraeForSwitch() {
-  await startTraeWithCdp(TRAE_EXE, CDP_PORT);
-  return await waitForCdp(CDP_PORT);
+  const pid = await startTraeWithCdp(TRAE_EXE, CDP_PORT, {
+    log: (message) => console.log(`[switch] ${message}`),
+  });
+  if (!pid) {
+    throw new Error("TRAE 未能成功启动，请手动打开 Trae CN 后重试切换（原因见 daemon 日志）");
+  }
+  return pid;
 }
 
 async function restartTraeForSwitch() {
@@ -717,7 +738,12 @@ async function switchAccount(accountId) {
   }
 
   console.log(`[switch] 凭据就绪，正在停止 TRAE（已用时 ${elapsed()}）`);
-  await stopTraeForSwitch();
+  try {
+    await stopTraeForSwitch();
+  } catch (error) {
+    console.error(`[switch] 停止 TRAE 失败，切换中止（已用时 ${elapsed()}）：${error?.message || error}`);
+    throw error;
+  }
   console.log(`[switch] TRAE 已停止，正在写入账号状态（已用时 ${elapsed()}）`);
   let transaction;
   try {
@@ -726,7 +752,10 @@ async function switchAccount(accountId) {
       snapshot,
     });
   } catch (error) {
-    await startTraeForSwitch().catch(() => false);
+    await startTraeForSwitch().catch((restartError) => {
+      console.error(`[switch] 快照写入失败后重启 TRAE 也失败：${restartError?.message || restartError}`);
+      return false;
+    });
     throw error;
   }
 
@@ -746,9 +775,15 @@ async function switchAccount(accountId) {
     };
   } catch (error) {
     console.log(`[switch] 切换失败，正在回滚到原账号：${error.message || error}`);
-    await stopTraeForSwitch().catch(() => {});
+    await stopTraeForSwitch().catch((stopError) => {
+      console.error(`[switch] 回滚时停止 TRAE 失败：${stopError?.message || stopError}`);
+      return undefined;
+    });
     await rollbackAuthSnapshot(STORAGE_PATH, transaction);
-    await restartTraeForSwitch().catch(() => false);
+    await restartTraeForSwitch().catch((restartError) => {
+      console.error(`[switch] 回滚时重启 TRAE 失败，请手动打开 Trae CN：${restartError?.message || restartError}`);
+      return false;
+    });
     throw new Error(`${error.message}; the previous login state was restored`);
   }
 }
@@ -2405,6 +2440,11 @@ async function main() {
 
   const server = http.createServer((request, response) => {
     route(request, response, apiToken, cdpClient, oauthManager).catch((error) => {
+      // 500 不能只回给面板：日志里必须留下一行，否则像 2026-10-19 那样切换卡在
+      // 停止步骤时，daemon 日志零痕迹，问题无从排查。
+      console.error(
+        `[http] ${request.method} ${request.url} 失败：${error instanceof Error ? error.message : String(error)}`,
+      );
       jsonResponse(response, 500, {
         ok: false,
         error: error instanceof Error ? error.message : String(error),

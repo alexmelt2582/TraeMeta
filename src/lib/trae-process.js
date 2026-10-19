@@ -296,15 +296,64 @@ export async function stopTraeForRestart(exePath, { timeoutMs = 15000 } = {}) {
   return [];
 }
 
-export async function startTraeWithCdp(exePath, port) {
-  const child = spawn(exePath, ["--new-window", `--remote-debugging-port=${port}`], {
-    cwd: path.dirname(exePath),
-    detached: true,
-    stdio: "ignore",
-    windowsHide: false,
-  });
+export async function startTraeWithCdp(exePath, port, { log = null, waitTimeoutMs = 60000 } = {}) {
+  let child;
+  try {
+    child = spawn(exePath, ["--new-window", `--remote-debugging-port=${port}`], {
+      cwd: path.dirname(exePath),
+      detached: true,
+      stdio: "ignore",
+      windowsHide: false,
+    });
+  } catch (error) {
+    log?.(`TRAE 启动失败：${error?.message || error}`);
+    return null;
+  }
   child.unref();
-  return child.pid || null;
+  const pid = child.pid || null;
+
+  // 启动失败以前是静默的：spawn 出错只体现在没人监听的 error 事件上；进程秒退
+  // 则要白等满 CDP 超时，还被误报成"端口没就绪"。杀掉 TRAE 后立刻拉起时，杀毒
+  // 软件正在扫刚写入的账号快照，正是"偶发拉不起来"的现场。这里把两种失败都转
+  // 成明确的 null 并留下原因；进程若只是启动慢，仍按完整预算等它就绪。
+  return await new Promise((resolve) => {
+    let settled = false;
+    let dead = false;
+    const settle = (result) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    child.once("error", (error) => {
+      dead = true;
+      log?.(`TRAE 启动失败：${error?.message || error}`);
+      settle(null);
+    });
+    child.once("exit", (code, signal) => {
+      dead = true;
+      log?.(`TRAE 进程在启动阶段退出：code=${code ?? "null"} signal=${signal ?? "null"}`);
+      settle(null);
+    });
+    void (async () => {
+      const startedAt = Date.now();
+      while (!settled) {
+        if (await isTraeCdpAvailable(port)) {
+          settle(pid);
+          return;
+        }
+        if (dead) {
+          settle(null);
+          return;
+        }
+        if (Date.now() - startedAt >= waitTimeoutMs) {
+          log?.(`CDP 端口 ${port} 在 ${(waitTimeoutMs / 1000).toFixed(0)}s 内未就绪`);
+          settle(null);
+          return;
+        }
+        await new Promise((resolveTick) => setTimeout(resolveTick, 500));
+      }
+    })();
+  });
 }
 
 /**
