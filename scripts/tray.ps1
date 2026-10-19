@@ -14,6 +14,25 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Pin this process's notification identity to the AUMID the installer
+# registers under HKCU\SOFTWARE\Classes\AppUserModelId. Windows renders tray
+# balloon tips through the notification platform, which resolves the toast's
+# icon from that identity; without it the platform attributes the toast
+# heuristically, and a freshly installed icon can leak into other apps'
+# notifications (and vice versa). Best effort by design: on any failure the
+# balloon still carries its own icon exactly as before. The call must happen
+# before the NotifyIcon below creates this process's first window.
+$signature = @'
+[DllImport("shell32.dll")]
+public static extern int SetCurrentProcessExplicitAppUserModelID([MarshalAs(UnmanagedType.LPWStr)] string AppID);
+'@
+try {
+  Add-Type -MemberDefinition $signature -Namespace TraeMeta -Name NativeShell -ErrorAction Stop | Out-Null
+  [void][TraeMeta.NativeShell]::SetCurrentProcessExplicitAppUserModelID('TraeMeta.Tray')
+} catch {
+  # Identity pinning is an improvement, not a requirement.
+}
+
 $mutex = New-Object System.Threading.Mutex($false, 'Local\TraeMetaTray')
 if (-not $mutex.WaitOne(0)) {
   Write-Output 'another tray host is already running'

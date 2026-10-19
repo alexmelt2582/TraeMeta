@@ -242,6 +242,10 @@ async function assemblePortableFolder() {
   await fs.copyFile(ENTRIES.trayScript, path.join(PORTABLE_DIR, "scripts", "tray.ps1"));
   await fs.copyFile(ENTRIES.cmdEntry, path.join(PORTABLE_DIR, "scripts", "trae-meta.cmd"));
   await fs.copyFile(ENTRIES.readme, path.join(PORTABLE_DIR, "README.md"));
+  // The installer stages from this folder and ships the icon file next to the
+  // executable: the notification identity it registers in the registry points
+  // at this file (`{app}\icon.ico`).
+  await fs.copyFile(ENTRIES.icon, path.join(PORTABLE_DIR, "icon.ico"));
 
   // The shortcuts the installer creates point here rather than at the executable:
   // the executable is a console-subsystem program, so launching it directly always
@@ -266,6 +270,7 @@ async function assemblePortableFolder() {
 
   for (const relative of [
     EXE_NAME,
+    "icon.ico",
     "README.md",
     path.join("scripts", "trae-meta.cmd"),
     path.join("scripts", "tray.ps1"),
