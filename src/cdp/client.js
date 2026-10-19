@@ -22,6 +22,13 @@ async function fetchJson(url, { timeoutMs = 3000 } = {}) {
   }
 }
 
+/** The DOM id the injected panel installs (`ROOT_ID` in `src/ui/inject.js`).
+ * The two must stay in sync: the liveness probe below looks for exactly this
+ * node to decide whether a window still carries the panel. */
+export const PANEL_ROOT_ID = "traemeta-root";
+
+export const PANEL_ALIVE_EXPRESSION = `!!document.getElementById(${JSON.stringify(PANEL_ROOT_ID)})`;
+
 /**
  * The merged TRAE client renders the Code workbench and the Agent views in
  * separate targets, all served from `vscode-file://` so a URL-based match alone
@@ -87,6 +94,12 @@ class Connection {
     this.connected = false;
     this.pending = new Map();
     this.nextId = 1;
+    // True while a liveness-triggered re-injection is in flight, so the scan
+    // loop never stacks two of them against the same window.
+    this.injecting = false;
+    // State of the last re-injection attempt; the failure is logged once per
+    // failing streak instead of once per scan.
+    this.injectFailed = false;
   }
 }
 
@@ -135,7 +148,9 @@ export class CdpClient {
 
   /**
    * Keeps one connection per injectable target. New Code windows are picked up
-   * on later scans, and a window that closes drops its connection here.
+   * on later scans, a window that closes drops its connection here, and every
+   * pass ends with a liveness sweep so a window that lost the panel gets it
+   * re-injected (see `reinjectMissingPanels`).
    */
   async runLoop() {
     while (!this.stopped) {
@@ -154,10 +169,62 @@ export class CdpClient {
             // Retry on the next scan; TRAE may still be mid-navigation.
           }
         }
+        await this.reinjectMissingPanels();
       } catch {
         // The CDP endpoint is unavailable; try again shortly.
       }
       await delay(1000);
+    }
+  }
+
+  /**
+   * Self-heal for the disappearing panel. Injection runs when a target is
+   * connected and again on `Page.loadEventFired`, but both can miss: picking a
+   * project swaps TRAE to a freshly created workbench target whose page is not
+   * ready yet, the connect-time evaluate fails, the error used to be swallowed,
+   * and the load event may already have fired before `Page.enable` took effect —
+   * the panel then never came back.
+   *
+   * One tiny evaluate per window per scan closes every path: a missing panel —
+   * from a failed injection, a swapped execution context, or a removed DOM
+   * node — is re-injected on the next pass. The injected script is idempotent
+   * (it cleans up the previous root before rebuilding), so re-running it is
+   * always safe.
+   */
+  async reinjectMissingPanels() {
+    for (const connection of [...this.connections.values()]) {
+      if (!connection.connected || connection.injecting) continue;
+      let alive = true;
+      try {
+        alive =
+          (await this.evaluateOn(connection, PANEL_ALIVE_EXPRESSION, {
+            awaitPromise: false,
+            timeoutMs: 2000,
+          })) === true;
+      } catch {
+        // A page mid-navigation rejects evaluates; the probe simply retries on
+        // the next scan once the new context has settled.
+        alive = false;
+      }
+      if (alive) {
+        connection.injectFailed = false;
+        continue;
+      }
+      connection.injecting = true;
+      try {
+        await this.injectInto(connection);
+        connection.injectFailed = false;
+      } catch (error) {
+        if (!connection.injectFailed) {
+          connection.injectFailed = true;
+          // The daemon redirects console calls into the redacting log file.
+          console.warn(
+            `[cdp] panel liveness re-injection into target ${connection.id} failed: ${error?.message || error}`,
+          );
+        }
+      } finally {
+        connection.injecting = false;
+      }
     }
   }
 
