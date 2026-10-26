@@ -4483,30 +4483,50 @@
    * The icon drags the whole widget — the open panel follows it — and the position
    * is stored so a reload returns it. Nothing here is required for the panel to
    * work: with no stored position the original corner is used unchanged.
+   *
+   * 横向位置固定：图标永远钉在距右缘 FAB_RIGHT_OFFSET 处，拖拽只改变纵向；
+   * 顶部不允许压进 TRAE 自绘的导航条（它是页面内容的一部分，不留净空就会重叠）。
    */
   const POSITION_KEY = "traemeta:widget-position";
   // Movement smaller than this is still a click; without it every click would
   // jitter the widget by a pixel or two and be remembered as a move.
   const DRAG_THRESHOLD = 4;
+  // 与窗口右缘的固定距离，和初始 CSS 的 right: 18px 保持一致。
+  const FAB_RIGHT_OFFSET = 18;
+  // 量不到标题栏高度时的兜底净空。
+  const TITLEBAR_FALLBACK_CLEARANCE = 40;
+
   let dragState = null;
   let ignoreNextFabClick = false;
 
-  function clampToViewport(left, top) {
-    const width = root.offsetWidth || 42;
-    const height = root.offsetHeight || 42;
-    return {
-      left: Math.min(Math.max(0, left), Math.max(0, window.innerWidth - width)),
-      top: Math.min(Math.max(0, top), Math.max(0, window.innerHeight - height)),
-    };
+  /**
+   * 顶部净空优先取 TRAE 标题栏的实际高度。VS Code 系工作台的标题栏是
+   * `.titlebar` 元素，量它的底边在任何缩放下都准确；量不到（DOM 结构变化）
+   * 才退回固定值。全屏时标题栏隐藏、bottom 为 0，此时 0 是正确答案而非异常。
+   */
+  function titleBarClearance() {
+    const bar = document.querySelector(".titlebar");
+    const bottom = bar?.getBoundingClientRect().bottom;
+    if (Number.isFinite(bottom) && bottom >= 0 && bottom < window.innerHeight * 0.5) {
+      return bottom;
+    }
+    return TITLEBAR_FALLBACK_CLEARANCE;
   }
 
-  /** Places the widget; `left` and `right` must never both be set, or the fixed
-   * box stretches across the window instead of moving. */
-  function moveWidget(left, top) {
-    const next = clampToViewport(left, top);
-    root.style.left = `${next.left}px`;
-    root.style.top = `${next.top}px`;
-    root.style.right = "auto";
+  function clampFabTop(top) {
+    const height = root.offsetHeight || 42;
+    const minTop = titleBarClearance();
+    const maxTop = Math.max(minTop, window.innerHeight - height);
+    return Math.min(Math.max(minTop, top), maxTop);
+  }
+
+  /** Places the widget. The horizontal spot never moves: `right` is pinned to
+   * FAB_RIGHT_OFFSET, only `top` changes. */
+  function moveWidget(top) {
+    const next = clampFabTop(top);
+    root.style.top = `${next}px`;
+    root.style.right = `${FAB_RIGHT_OFFSET}px`;
+    root.style.left = "auto";
     root.style.bottom = "auto";
     // The panel is anchored to the icon rather than to the widget box, so moving
     // the icon has to re-anchor it — otherwise the panel is left behind.
@@ -4517,7 +4537,9 @@
   function storedWidgetPosition() {
     try {
       const saved = JSON.parse(localStorage.getItem(POSITION_KEY) ?? "null");
-      return Number.isFinite(saved?.left) && Number.isFinite(saved?.top) ? saved : null;
+      // Older builds saved {left, top}; the horizontal half is obsolete now —
+      // only the remembered height carries over.
+      return Number.isFinite(saved?.top) ? { top: saved.top } : null;
     } catch {
       // Unreadable means "never moved"; it must not take the panel down.
       return null;
@@ -4525,7 +4547,7 @@
   }
 
   const savedWidgetPosition = storedWidgetPosition();
-  if (savedWidgetPosition) moveWidget(savedWidgetPosition.left, savedWidgetPosition.top);
+  if (savedWidgetPosition) moveWidget(savedWidgetPosition.top);
 
   /**
    * Anchors the open panel inside the viewport so it is never clipped.
@@ -4566,9 +4588,7 @@
       if (event.button !== 0) return;
       const rect = root.getBoundingClientRect();
       dragState = {
-        x: event.clientX,
         y: event.clientY,
-        left: rect.left,
         top: rect.top,
         moved: false,
       };
@@ -4576,12 +4596,12 @@
     });
     handle.addEventListener("pointermove", (event) => {
       if (!dragState) return;
-      const dx = event.clientX - dragState.x;
       const dy = event.clientY - dragState.y;
-      // Below the threshold this is still a click, so nothing moves yet.
-      if (!dragState.moved && Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD) return;
+      // Below the threshold this is still a click, so nothing moves yet. 横向
+      // 位移不参与判定：图标横向位置固定，单独的横向抖动不该算成拖动。
+      if (!dragState.moved && Math.abs(dy) < DRAG_THRESHOLD) return;
       dragState.moved = true;
-      moveWidget(dragState.left + dx, dragState.top + dy);
+      moveWidget(dragState.top + dy);
     });
     const finish = (event) => {
       if (!dragState) return;
@@ -4591,9 +4611,9 @@
       if (!moved) return;
       if (handle === fab) ignoreNextFabClick = true;
       const rect = root.getBoundingClientRect();
-      const next = moveWidget(rect.left, rect.top);
+      const next = moveWidget(rect.top);
       try {
-        localStorage.setItem(POSITION_KEY, JSON.stringify(next));
+        localStorage.setItem(POSITION_KEY, JSON.stringify({ top: next }));
       } catch {
         // Remembering the spot is a convenience; blocked or full storage must not
         // turn a drag into a visible error.
@@ -4609,11 +4629,12 @@
 
   // A window that shrank can leave the widget past the new edge, so it is pulled
   // back. The stored value is left as it is: the window may grow again. The open
-  // panel is re-anchored too, so a resize never leaves it clipped.
+  // panel is re-anchored too, so a resize never leaves it clipped. 横向无需处理：
+  // right 钉在右缘，窗口怎么缩放图标都跟着右缘走。
   window.addEventListener("resize", () => {
-    if (root.style.left) {
+    if (root.style.top) {
       const rect = root.getBoundingClientRect();
-      moveWidget(rect.left, rect.top);
+      moveWidget(rect.top);
     }
     if (panel.classList.contains("open")) positionPanel();
   });
