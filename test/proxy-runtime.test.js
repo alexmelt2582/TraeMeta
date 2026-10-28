@@ -64,6 +64,13 @@ test("exception matching covers bare hosts, suffixes and the wildcard form", () 
   assert.equal(isExcluded("not a url", ["api.trae.cn"]), false);
 });
 
+test("Windows' <local> token exempts dotless intranet hostnames", () => {
+  assert.equal(isExcluded("https://my-nas/x", ["<local>"]), true);
+  assert.equal(isExcluded("http://printer.local:8080/x", ["<local>"]), false);
+  assert.equal(isExcluded("https://api.trae.cn/x", ["<local>"]), false);
+  assert.equal(isExcluded("https://my-nas/x", ["localhost", "<local>", "127.0.0.1"]), true);
+});
+
 test("a live configuration swap takes effect on the next request", async () => {
   resetProxyRuntime();
   try {

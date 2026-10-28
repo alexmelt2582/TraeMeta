@@ -312,14 +312,17 @@ export async function refreshAuthSnapshot(snapshot) {
   };
 }
 
-export async function refreshAccountKeepalive(snapshot, { now = Date.now() } = {}) {
+export async function refreshAccountKeepalive(
+  snapshot,
+  { now = Date.now(), previousInsights = null } = {},
+) {
   let { snapshot: current, auth, profile, refreshedToken } =
     await refreshAuthSnapshotIfNeeded(snapshot, { now });
 
   let insights = null;
   let insightsError = null;
   try {
-    insights = await fetchTraeAccountInsights(current);
+    insights = await fetchTraeAccountInsights(current, { now, previousInsights });
   } catch (error) {
     if (error instanceof TraeInsightsAuthError && !refreshedToken) {
       const rotated = await refreshAuthSnapshot(current);
@@ -328,7 +331,7 @@ export async function refreshAccountKeepalive(snapshot, { now = Date.now() } = {
       profile = rotated.profile;
       refreshedToken = true;
       try {
-        insights = await fetchTraeAccountInsights(current);
+        insights = await fetchTraeAccountInsights(current, { now, previousInsights });
       } catch (retryError) {
         insightsError = retryError.message || String(retryError);
       }
@@ -347,11 +350,11 @@ export async function refreshAccountKeepalive(snapshot, { now = Date.now() } = {
   };
 }
 
-export async function refreshAccountInsights(snapshot) {
+export async function refreshAccountInsights(snapshot, { previousInsights = null } = {}) {
   try {
     return {
       snapshot,
-      insights: await fetchTraeAccountInsights(snapshot),
+      insights: await fetchTraeAccountInsights(snapshot, { previousInsights }),
       refreshedToken: false,
     };
   } catch (error) {
@@ -361,7 +364,7 @@ export async function refreshAccountInsights(snapshot) {
   const refreshed = await refreshAuthSnapshot(snapshot);
   return {
     snapshot: refreshed.snapshot,
-    insights: await fetchTraeAccountInsights(refreshed.snapshot),
+    insights: await fetchTraeAccountInsights(refreshed.snapshot, { previousInsights }),
     refreshedToken: true,
   };
 }

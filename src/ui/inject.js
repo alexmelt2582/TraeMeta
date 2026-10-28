@@ -707,6 +707,35 @@
       white-space: nowrap;
     }
 
+    #${ROOT_ID} .te-credit-today {
+      flex: 0 0 auto;
+      color: var(--te-muted);
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    #${ROOT_ID} .te-credit-retry {
+      flex: 0 0 auto;
+      padding: 2px 9px;
+      border: 1px solid var(--te-border);
+      border-radius: 999px;
+      color: var(--te-accent);
+      background: transparent;
+      font: inherit;
+      font-size: 10px;
+      cursor: pointer;
+    }
+
+    #${ROOT_ID} .te-credit-retry:hover:not(:disabled) {
+      border-color: var(--te-accent);
+    }
+
+    #${ROOT_ID} .te-credit-retry:disabled {
+      opacity: .6;
+      cursor: default;
+    }
+
     #${ROOT_ID} .te-current {
       padding: 3px 7px;
       border-radius: 999px;
@@ -906,6 +935,11 @@
       box-shadow: 0 22px 70px rgba(0,0,0,.38);
     }
 
+    /* 会话导出弹层比默认弹层宽：要容纳「项目 · 数量」分组和完整会话标题。 */
+    #${ROOT_ID} .te-modal-sessions {
+      width: min(760px, 92vw);
+    }
+
     #${ROOT_ID} .te-modal-title {
       font-size: 15px;
       font-weight: 700;
@@ -985,6 +1019,46 @@
       white-space: nowrap;
       color: var(--te-muted);
       font-size: 10px;
+    }
+
+    #${ROOT_ID} .te-sessions-body {
+      max-height: min(58vh, 560px);
+      display: grid;
+      gap: 6px;
+      margin-top: 12px;
+      overflow: auto;
+      align-content: start;
+    }
+
+    /* 项目分组头：滚动时吸顶，方便长列表里始终看清当前组。 */
+    #${ROOT_ID} .te-session-group {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      padding: 4px 2px;
+      background: var(--te-panel-solid);
+      color: var(--te-muted);
+      font-size: 10px;
+      font-weight: 650;
+      letter-spacing: .02em;
+    }
+
+    #${ROOT_ID} .te-session-row {
+      padding: 8px 10px;
+      border: 1px solid var(--te-border);
+      border-radius: 9px;
+      background: var(--te-surface);
+      cursor: pointer;
+    }
+
+    #${ROOT_ID} .te-session-row:hover {
+      border-color: var(--te-accent);
+    }
+
+    #${ROOT_ID} .te-session-row.busy {
+      border-color: var(--te-accent);
+      cursor: default;
+      opacity: .65;
     }
 
     #${ROOT_ID} .te-field {
@@ -1194,43 +1268,72 @@
 
     /* ---- Proxy (settings › 网络) ----------------------------------------- */
 
-    /* Three exclusive modes as whole-card targets: the description stays
-       attached to the option it explains, instead of sitting in a paragraph the
-       reader has to map back onto a radio. */
-    #${ROOT_ID} .te-net-modes { display: grid; gap: 8px; margin-top: 12px; }
+    /* 代理设置是行式布局（左标签、右控件，行间细分隔线），与其它设置页一致；
+       并排输入（地址+端口、账号+密码）在行内自行分列。 */
+    #${ROOT_ID} .te-net-card { margin-top: 12px; }
 
-    #${ROOT_ID} .te-net-mode {
+    #${ROOT_ID} .te-net-addr {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      min-width: 0;
+    }
+
+    #${ROOT_ID} .te-net-addr .te-net-host {
+      flex: 1 1 auto;
+      width: auto;
+      min-width: 0;
+    }
+
+    #${ROOT_ID} .te-net-addr .te-net-port {
+      flex: 0 0 86px;
+      width: 86px;
+    }
+
+    #${ROOT_ID} .te-net-auth {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      min-width: 0;
+    }
+
+    #${ROOT_ID} .te-net-auth .te-net-user {
+      flex: 1 1 40%;
+      width: auto;
+      min-width: 0;
+    }
+
+    #${ROOT_ID} .te-net-pass-wrap {
+      position: relative;
+      display: flex;
+      flex: 1 1 60%;
+      min-width: 0;
+    }
+
+    #${ROOT_ID} .te-net-pass-wrap .te-net-pass {
+      flex: 1 1 auto;
+      width: auto;
+      min-width: 0;
+      padding-right: 30px;
+    }
+
+    #${ROOT_ID} .te-net-pass-eye {
+      position: absolute;
+      right: 3px;
+      top: 50%;
+      transform: translateY(-50%);
       display: grid;
-      grid-template-columns: 16px minmax(0, 1fr);
-      gap: 10px;
-      align-items: start;
-      padding: 10px 11px;
-      border: 1px solid var(--te-border);
-      border-radius: 10px;
-      background: var(--te-panel-solid);
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      border: 0;
+      color: var(--te-muted);
+      background: transparent;
       cursor: pointer;
     }
 
-    #${ROOT_ID} .te-net-mode:hover {
-      border-color: color-mix(in srgb, var(--te-accent) 45%, var(--te-border));
-    }
-
-    #${ROOT_ID} .te-net-mode.selected {
-      border-color: var(--te-accent);
-      background: color-mix(in srgb, var(--te-accent) 10%, var(--te-panel-solid));
-    }
-
-    #${ROOT_ID} .te-net-mode input {
-      margin: 2px 0 0;
-      accent-color: var(--te-accent);
-      cursor: pointer;
-    }
-
-    #${ROOT_ID} .te-net-mode-body { display: grid; gap: 2px; min-width: 0; }
-    #${ROOT_ID} .te-net-mode-name { font-size: 11.5px; font-weight: 650; }
-    #${ROOT_ID} .te-net-mode-desc { color: var(--te-muted); font-size: 10px; line-height: 1.5; }
-
-    #${ROOT_ID} .te-net-fields { margin-top: 2px; }
+    #${ROOT_ID} .te-net-pass-eye:hover { color: var(--te-text); }
 
     /* A settings-row control, sized to a value rather than to the full width, so
        it reads on one line the way the select rows already do. */
@@ -1260,8 +1363,6 @@
     #${ROOT_ID} .te-input::placeholder {
       color: color-mix(in srgb, var(--te-muted) 82%, transparent);
     }
-
-    #${ROOT_ID} .te-net-port { width: 86px; }
 
     /* The plaintext-credential warning and the SOCKS5 note. Shop talk lives
        here, never in the mode descriptions above. */
@@ -1776,85 +1877,55 @@
               </div>
               <span class="te-badge te-net-badge">未读取</span>
             </div>
-            <div class="te-net-modes" role="radiogroup" aria-label="代理模式">
-              <label class="te-net-mode selected">
-                <input type="radio" name="te-net-mode" value="off" checked>
-                <span class="te-net-mode-body">
-                  <span class="te-net-mode-name">不使用代理</span>
-                  <span class="te-net-mode-desc">直接连网，不经过代理。普通网络用这个。</span>
-                </span>
+            <div class="te-set-rows te-net-card">
+              <label class="te-set-row">
+                <span class="te-set-text"><span class="te-set-name">代理模式</span></span>
+                <select class="te-select te-net-mode" title="直连：不经过代理；使用系统代理：跟随 Windows 里已配置的代理；手动代理：自行填写代理地址">
+                  <option value="off">直连</option>
+                  <option value="system">使用系统代理</option>
+                  <option value="custom">手动代理</option>
+                </select>
               </label>
-              <label class="te-net-mode">
-                <input type="radio" name="te-net-mode" value="system">
-                <span class="te-net-mode-body">
-                  <span class="te-net-mode-name">使用系统代理</span>
-                  <span class="te-net-mode-desc">跟随 Windows 里已配置的代理，公司内网通常选这个。</span>
-                </span>
+              <label class="te-set-row te-net-custom-only">
+                <span class="te-set-text"><span class="te-set-name">代理协议</span></span>
+                <select class="te-select te-net-scheme" title="不确定就选 HTTP，Clash 等工具的混合端口通常是 HTTP；SOCKS5 需要代理端支持">
+                  <option value="http">HTTP</option>
+                  <option value="https">HTTPS</option>
+                  <option value="socks5">SOCKS5</option>
+                </select>
               </label>
-              <label class="te-net-mode">
-                <input type="radio" name="te-net-mode" value="custom">
-                <span class="te-net-mode-body">
-                  <span class="te-net-mode-name">使用自定义代理</span>
-                  <span class="te-net-mode-desc">自己填写代理地址，适用于系统只配了自动脚本(PAC)或需要固定代理的情况。</span>
+              <div class="te-set-row te-net-custom-only">
+                <span class="te-set-text"><span class="te-set-name">代理地址</span></span>
+                <span class="te-net-addr">
+                  <input class="te-input te-net-host" type="text" placeholder="127.0.0.1" autocomplete="off" spellcheck="false" title="代理工具里显示的地址；也可直接粘贴完整代理链接（如 http://user:pass@127.0.0.1:7890），会自动拆分填入">
+                  <input class="te-input te-net-port" type="text" inputmode="numeric" placeholder="7890" autocomplete="off" title="代理工具里显示的端口号">
                 </span>
-              </label>
-            </div>
-
-            <div class="te-net-fields">
-              <div class="te-set-rows">
-                <label class="te-set-row te-net-custom-only">
-                  <span class="te-set-text">
-                    <span class="te-set-name">类型</span>
-                    <span class="te-set-hint">不确定就选 HTTP，Clash 等工具的混合端口通常是 HTTP</span>
-                  </span>
-                  <select class="te-select te-net-scheme">
-                    <option value="http">HTTP</option>
-                    <option value="https">HTTPS</option>
-                    <option value="socks5">SOCKS5</option>
-                  </select>
-                </label>
-                <label class="te-set-row te-net-custom-only">
-                  <span class="te-set-text">
-                    <span class="te-set-name">地址</span>
-                    <span class="te-set-hint">可直接粘贴完整代理链接，会自动拆分</span>
-                  </span>
-                  <input class="te-input te-net-host" type="text" placeholder="127.0.0.1" autocomplete="off" spellcheck="false">
-                </label>
-                <label class="te-set-row te-net-custom-only">
-                  <span class="te-set-text">
-                    <span class="te-set-name">端口</span>
-                    <span class="te-set-hint">代理工具里显示的端口号</span>
-                  </span>
-                  <input class="te-input te-net-port" type="text" inputmode="numeric" placeholder="7890" autocomplete="off">
-                </label>
-                <label class="te-set-row te-net-custom-only">
-                  <span class="te-set-text">
-                    <span class="te-set-name">账号</span>
-                    <span class="te-set-hint">代理不需要认证就留空</span>
-                  </span>
-                  <input class="te-input te-net-user" type="text" placeholder="可留空" autocomplete="off" spellcheck="false">
-                </label>
-                <label class="te-set-row te-net-custom-only">
-                  <span class="te-set-text">
-                    <span class="te-set-name">密码</span>
-                    <span class="te-set-hint">只填账号不填密码也支持</span>
-                  </span>
-                  <input class="te-input te-net-pass" type="password" placeholder="可留空" autocomplete="new-password">
-                </label>
-                <label class="te-set-row">
-                  <span class="te-set-text">
-                    <span class="te-set-name">不走代理的地址</span>
-                    <span class="te-set-hint">多个用英文逗号分隔；本机地址始终不走代理</span>
-                  </span>
-                  <input class="te-input te-net-noproxy" type="text" placeholder="*.corp.example.com" autocomplete="off" spellcheck="false">
-                </label>
               </div>
-              <p class="te-net-note te-net-socks-hint">需要代理端支持 SOCKS5。如果你用的是 Clash 的 7890 混合端口，选 HTTP 即可。</p>
-              <p class="te-net-note te-net-credential-note">
-                账号密码以明文保存在本机 data/config.json，请勿在共享电脑上填写。
-                <span class="te-net-credential-state"></span>
-              </p>
+              <div class="te-set-row te-net-custom-only">
+                <span class="te-set-text"><span class="te-set-name">代理认证</span></span>
+                <span class="te-net-auth">
+                  <input class="te-input te-net-user" type="text" placeholder="用户名" autocomplete="off" spellcheck="false" title="代理不需要认证就两项都留空；只填账号不填密码也支持">
+                  <span class="te-net-pass-wrap">
+                    <input class="te-input te-net-pass" type="password" placeholder="密码" autocomplete="new-password">
+                    <button class="te-net-pass-eye" type="button" title="显示或隐藏密码" aria-label="显示或隐藏密码">
+                      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                      </svg>
+                    </button>
+                  </span>
+                </span>
+              </div>
+              <label class="te-set-row te-net-proxy-only">
+                <span class="te-set-text"><span class="te-set-name">不代理地址</span></span>
+                <input class="te-input te-net-noproxy" type="text" placeholder="&lt;local&gt;,localhost,127.0.0.1,::1" autocomplete="off" spellcheck="false" title="这些地址不走代理，多个用英文逗号分隔；本机回环地址始终直连">
+              </label>
             </div>
+            <p class="te-net-note te-net-socks-hint">需要代理端支持 SOCKS5。如果你用的是 Clash 的 7890 混合端口，选 HTTP 即可。</p>
+            <p class="te-net-note te-net-credential-note">
+              账号密码以明文保存在本机 data/config.json，请勿在共享电脑上填写。
+              <span class="te-net-credential-state"></span>
+            </p>
 
             <div class="te-net-verdict te-net-result"></div>
 
@@ -1962,6 +2033,25 @@
     </div>
   `;
 
+  // 会话导出弹层：先列出当前 TRAE 的会话，点条目再导出那一条为 Markdown。
+  const sessionsMask = document.createElement("div");
+  sessionsMask.className = "te-modal-mask";
+  sessionsMask.innerHTML = `
+    <div class="te-modal te-modal-sessions" role="dialog" aria-modal="true" aria-label="会话导出">
+      <div class="te-modal-title">会话导出</div>
+      <div class="te-sessions-body"></div>
+      <div class="te-modal-status te-sessions-status"></div>
+      <div class="te-modal-actions">
+        <button class="te-secondary te-sessions-close" type="button">关闭</button>
+      </div>
+    </div>
+  `;
+  const sessionsUi = {
+    body: sessionsMask.querySelector(".te-sessions-body"),
+    status: sessionsMask.querySelector(".te-sessions-status"),
+    close: sessionsMask.querySelector(".te-sessions-close"),
+  };
+
   /**
    * The upgrade progress box.
    *
@@ -1981,6 +2071,7 @@
       <div class="te-install-bar" hidden><div class="te-install-bar-fill"></div></div>
       <div class="te-modal-actions">
         <button class="te-secondary te-install-close" type="button" hidden>关闭</button>
+        <button class="te-secondary te-install-cancel" type="button" hidden>取消</button>
         <button class="te-primary te-install-retry" type="button" hidden>重试</button>
       </div>
     </div>
@@ -1991,6 +2082,7 @@
     bar: installMask.querySelector(".te-install-bar"),
     fill: installMask.querySelector(".te-install-bar-fill"),
     close: installMask.querySelector(".te-install-close"),
+    cancel: installMask.querySelector(".te-install-cancel"),
     retry: installMask.querySelector(".te-install-retry"),
   };
 
@@ -2018,6 +2110,7 @@
     deleteMask,
     switchMask,
     installMask,
+    sessionsMask,
     creditPopover,
     importFileInput,
     fab,
@@ -2027,6 +2120,9 @@
   let toastTimer = null;
   let refreshGeneration = 0;
   let insightsRefreshGeneration = 0;
+  // 网络自愈：上次面板刷新失败的时刻、上次后台自动补刷额度的时刻。
+  let serviceFailAt = 0;
+  let lastSelfHealAt = 0;
   let activeTab = "account";
   let accountCount = 0;
   let oauthSession = null;
@@ -2057,7 +2153,6 @@
   let switchAccountId = null;
   let switchAccountName = "";
   let switchBusy = false;
-
   /**
    * 合并版 Trae CN 的 workbench CSP 禁止 `connect-src http:`，但放行 `ws:`，
    * 面板因此只能通过 WebSocket 访问守护进程。下面的 API 形状与原来的 HTTP 完全
@@ -2088,6 +2183,9 @@
       ws.onopen = () => {
         rpcSocket = ws;
         resolve(ws);
+        // 断网期间失败过的面板，在通道恢复后自动重拉一次；成功会清掉失败标记，
+        // 首次连接时标记必为 0，不会多刷。
+        if (serviceFailAt) void refresh();
       };
       ws.onerror = () => {
         rpcSocket = null;
@@ -2324,7 +2422,7 @@
     return {
       plan,
       value,
-      detail: detail || (insights.resetAt ? `重置 ${formatTime(insights.resetAt)}` : "剩余额度"),
+      detail: detail || (insights.resetAt ? `额度恢复 ${formatTime(insights.resetAt)}` : "剩余额度"),
       error: !!insights.error,
     };
   }
@@ -2332,6 +2430,49 @@
   function accountCreditSegments(account) {
     const segments = account?.insights?.credits?.segments;
     return Array.isArray(segments) ? segments : [];
+  }
+
+  /**
+   * 渲染后发现额度失败的账号时，静默后台补刷一次。
+   *
+   * 距上次自愈不足 2 分钟就跳过，避免持续失败时打爆守护进程；包括 409（签到/
+   * 切换占着互斥锁）在内的一切失败都静默——成功后守护进程会推送
+   * accounts-updated，界面自己会刷新，这里不需要也无法可靠地报告什么。
+   */
+  function scheduleInsightsSelfHeal(accounts) {
+    const hasError = (Array.isArray(accounts) ? accounts : []).some(
+      (account) => !!account.insights?.error,
+    );
+    if (!hasError || Date.now() - lastSelfHealAt < 2 * 60 * 1000) return;
+    lastSelfHealAt = Date.now();
+    api("/api/accounts/insights/refresh", { method: "POST", body: "{}" }).catch(() => {});
+  }
+
+  /**
+   * 额度失败行的「重试」按钮：只刷新这一个账号。
+   *
+   * 等待期间自锁；成功交给 refresh() 重绘接管（按钮随重绘消失），失败恢复可点
+   * ——409 与网络错误都只是恢复原状，不打扰。
+   */
+  function retryAccountInsightsButton(accountId) {
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "te-credit-retry";
+    retry.textContent = "重试";
+    retry.addEventListener("click", () => {
+      retry.disabled = true;
+      retry.textContent = "刷新中";
+      api("/api/accounts/insights/refresh", {
+        method: "POST",
+        body: JSON.stringify({ accountIds: [accountId] }),
+      })
+        .then(() => refresh())
+        .catch(() => {
+          retry.disabled = false;
+          retry.textContent = "重试";
+        });
+    });
+    return retry;
   }
 
   /**
@@ -2560,6 +2701,24 @@
       }
       ops.appendChild(creditsButton);
 
+      // 会话存在当前这台 TRAE 的本地库里，所以只有当前账号给这个按钮：放在其他
+      // 账号上会暗示能导出它们的会话，那是做不到的。
+      if (account.id === currentAccountId) {
+        const sessionsButton = document.createElement("button");
+        sessionsButton.className = "te-icon-btn te-acc-sessions";
+        sessionsButton.type = "button";
+        sessionsButton.title = "会话导出：把这台 TRAE 的对话记录导出为 Markdown";
+        sessionsButton.setAttribute("aria-label", "导出当前 TRAE 的会话");
+        sessionsButton.innerHTML = `
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3v12"/>
+            <path d="m7 10 5 5 5-5"/>
+            <path d="M5 21h14"/>
+          </svg>
+        `;
+        ops.appendChild(sessionsButton);
+      }
+
       let action;
       if (account.id === currentAccountId) {
         action = document.createElement("span");
@@ -2652,7 +2811,22 @@
       creditDetail.className = "te-credit-detail";
       creditDetail.textContent = creditView.error ? "额度更新失败" : creditView.detail;
       creditDetail.title = account.insights?.error || creditDetail.textContent;
-      credit.append(creditLabel, creditValue, creditDetail);
+      credit.append(creditLabel, creditValue);
+      const todayUsage = account.insights?.todayUsage;
+      if (todayUsage && Number.isFinite(todayUsage.amount)) {
+        // 今日用量紧跟在额度值后面，右侧只留给周期信息与重试按钮。
+        const today = document.createElement("span");
+        today.className = "te-credit-today";
+        today.textContent = `今日 ${formatNumber(todayUsage.amount)}`;
+        today.title = todayUsage.estimated
+          ? "估算值：服务端明细暂不可用，已按本助手当日首次刷新额度起的差额统计，其它设备上的用量不计入"
+          : "今日积分消耗合计（来自 TRAE 服务端用量明细）";
+        credit.append(today);
+      }
+      credit.append(creditDetail);
+      if (creditView.error) {
+        credit.append(retryAccountInsightsButton(account.id));
+      }
 
       card.append(row, meta, credit);
       list.appendChild(card);
@@ -2672,10 +2846,13 @@
       status.textContent = health.cdpConnected ? "CDP 已连接" : "等待 CDP";
       accountCount = data.accounts.length;
       renderHeaderSubtitle();
+      serviceFailAt = 0;
       renderAccounts(data.accounts, data.currentAccountId, data.currentAccountState);
+      scheduleInsightsSelfHeal(data.accounts);
       return data;
     } catch (error) {
       if (generation !== refreshGeneration) return;
+      serviceFailAt = Date.now();
       const status = footer.querySelector(".te-status");
       footer.querySelector(".te-dot").classList.remove("online");
       status.textContent = "服务不可用";
@@ -2844,13 +3021,13 @@
     appUpdateCheck: settingsPane.querySelector(".te-app-update-check"),
     netPanel: settingsPane.querySelector('[data-settings-panel="network"]'),
     netBadge: settingsPane.querySelector(".te-net-badge"),
-    netModeInputs: Array.from(settingsPane.querySelectorAll('input[name="te-net-mode"]')),
-    netFields: settingsPane.querySelector(".te-net-fields"),
+    netMode: settingsPane.querySelector(".te-net-mode"),
     netScheme: settingsPane.querySelector(".te-net-scheme"),
     netHost: settingsPane.querySelector(".te-net-host"),
     netPort: settingsPane.querySelector(".te-net-port"),
     netUser: settingsPane.querySelector(".te-net-user"),
     netPass: settingsPane.querySelector(".te-net-pass"),
+    netPassEye: settingsPane.querySelector(".te-net-pass-eye"),
     netNoProxy: settingsPane.querySelector(".te-net-noproxy"),
     netSocksHint: settingsPane.querySelector(".te-net-socks-hint"),
     netCredentialNote: settingsPane.querySelector(".te-net-credential-note"),
@@ -3088,29 +3265,28 @@
   let netClearCredentials = false;
 
   function currentNetMode() {
-    return settingsUi.netModeInputs.find((input) => input.checked)?.value ?? "off";
+    return settingsUi.netMode.value;
   }
 
   /**
-   * Shows only what the chosen mode needs: nothing for direct, the exception
-   * list for the system proxy, and every field for a custom proxy.
+   * Shows only what the chosen mode needs: 手动代理展开协议/地址/认证；
+   * 「不代理地址」在系统代理与手动代理下都有意义，只有直连把它藏起来。
    */
   function applyNetVisibility() {
     const mode = currentNetMode();
     const custom = mode === "custom";
-    settingsUi.netFields.hidden = mode === "off";
     for (const row of settingsUi.netPanel.querySelectorAll(".te-net-custom-only")) {
       row.hidden = !custom;
     }
+    for (const row of settingsUi.netPanel.querySelectorAll(".te-net-proxy-only")) {
+      row.hidden = mode === "off";
+    }
     settingsUi.netSocksHint.hidden = !custom || settingsUi.netScheme.value !== "socks5";
     settingsUi.netCredentialNote.hidden = !custom;
-    for (const input of settingsUi.netModeInputs) {
-      input.closest(".te-net-mode")?.classList.toggle("selected", input.checked);
-    }
     // The hairline belongs to the row below, so the first row still visible has
     // to drop it once its predecessors are hidden.
     let first = true;
-    for (const row of settingsUi.netPanel.querySelectorAll(".te-net-fields .te-set-row")) {
+    for (const row of settingsUi.netPanel.querySelectorAll(".te-net-card .te-set-row")) {
       if (row.hidden) {
         row.classList.remove("te-row-first");
         continue;
@@ -3191,7 +3367,7 @@
     netClearCredentials = false;
 
     const mode = ["off", "system", "custom"].includes(state.mode) ? state.mode : "off";
-    for (const input of settingsUi.netModeInputs) input.checked = input.value === mode;
+    settingsUi.netMode.value = mode;
 
     if (mode === "custom") {
       settingsUi.netScheme.value = state.scheme || "http";
@@ -3205,14 +3381,10 @@
     // In system mode the reported host and port are the ones derived from the
     // registry, not the user's own entries, so writing them into the hidden
     // fields would overwrite what the custom mode should still remember.
+    // The daemon fills the standard defaults in when a proxy is saved with an
+    // empty list, so what is shown here is exactly what will be enforced.
     settingsUi.netNoProxy.value = state.noProxy
-      ? // Loopback is always appended by the daemon; showing it back would only
-        // invite the user to delete an entry that is put back on save.
-        state.noProxy
-          .split(",")
-          .map((entry) => entry.trim())
-          .filter((entry) => entry && !["127.0.0.1", "localhost", "::1"].includes(entry))
-          .join(", ")
+      ? state.noProxy.split(",").map((entry) => entry.trim()).filter(Boolean).join(", ")
       : "";
     setNetCredentialState(Boolean(state.hasCredentials));
     applyNetVisibility();
@@ -3220,12 +3392,12 @@
     settingsUi.netBadge.className = `te-badge te-net-badge${state.active ? " ok" : ""}`;
     settingsUi.netBadge.textContent =
       state.source === "custom"
-        ? "自定义代理"
+        ? "手动代理"
         : state.source === "system"
           ? state.active
             ? "系统代理"
             : "系统代理不可用"
-          : "未使用代理";
+          : "直连";
 
     settingsUi.netStatus.textContent = "";
     appendStatusLine(settingsUi.netStatus, "当前目标", formatNetTarget(state));
@@ -3328,7 +3500,7 @@
 
   function currentNetModeLabel() {
     const mode = currentNetMode();
-    return mode === "custom" ? "自定义代理" : mode === "system" ? "系统代理" : "不使用代理";
+    return mode === "custom" ? "手动代理" : mode === "system" ? "系统代理" : "直连";
   }
 
   /* -----------------------------------------------------------------------
@@ -3363,6 +3535,11 @@
    * "安装失败" on the second click.
    */
   let appUpdateInstall = null;
+  /**
+   * 本次下载是否由用户点了「取消」。守护进程的 cancelled 推送有两种来路——
+   * 用户取消下载，或向导被关闭——面板据此说不同的话；新一次升级开始时清零。
+   */
+  let installCancelRequested = false;
 
   /**
    * The stages that mean the daemon still knows about a live upgrade.
@@ -3493,6 +3670,9 @@
     let showBar = false;
     let showClose = false;
     let showRetry = false;
+    // 取消只挂在下载阶段：校验是几秒的本地校验和，向导一旦启动就可能正在换文件，
+    // 两者给一个能按下去的「取消」都是说谎。
+    let showCancel = false;
 
     if (state.stage === "downloading") {
       const size = installSizePair(state.received, state.total);
@@ -3500,6 +3680,7 @@
         `正在下载安装包${percent === null ? "" : ` ${percent}%`}` +
         `${size ? `（${size}）` : ""}…请不要关闭 TRAE。`;
       showBar = true;
+      showCancel = true;
     } else if (state.stage === "verifying") {
       status = "下载完成，正在校验安装包的完整性…";
       showBar = true;
@@ -3532,6 +3713,7 @@
     installUi.bar.hidden = !showBar;
     installUi.fill.style.width = `${percent ?? 0}%`;
     installUi.close.hidden = !showClose;
+    installUi.cancel.hidden = !showCancel;
     installUi.retry.hidden = !showRetry;
   }
 
@@ -3679,6 +3861,7 @@
       return;
     }
     appUpdateStage = "downloading";
+    installCancelRequested = false;
     appUpdateInstall = {
       stage: "downloading",
       version: latest.version,
@@ -3692,6 +3875,10 @@
     renderAppUpdate(appUpdateSnapshot);
     try {
       await api("/api/update/install", { method: "POST", body: "{}" });
+      if (appUpdateStage === "cancelled" && !appUpdateInstall) {
+        // 用户在下载期间点了取消：这次返回只是取消的收尾，不是启动成功。
+        return;
+      }
       /**
        * The daemon pushes this stage as well, so this is normally a no-op. It is
        * here so a push that never arrived cannot leave the box frozen at the last
@@ -3755,10 +3942,12 @@
      * running that no longer exists.
      */
     if (detail.stage === "cancelled") {
+      const byUser = installCancelRequested;
+      installCancelRequested = false;
       appUpdateInstall = null;
       renderInstallMask();
       renderAppUpdate(appUpdateSnapshot);
-      showToast("安装向导已关闭，本次升级没有完成");
+      showToast(byUser ? "已取消下载" : "安装向导已关闭，本次升级没有完成");
       return;
     }
     appUpdateInstall = { ...detail };
@@ -3782,6 +3971,32 @@
 
   installUi.retry.addEventListener("click", () => {
     installAppUpdate().catch(() => {});
+  });
+
+  /**
+   * 「取消」只在下载阶段可见，守护进程也会再把关一次。成功后不等推送、直接关框
+   * ——否则最后一格百分比会一直停在屏上等那条 cancelled 推送。向导已启动是唯一
+   * 会被拒的方式（409 install-in-flight），此时丢掉本地框、从守护进程读回真实
+   * 阶段继续展示。
+   */
+  installUi.cancel.addEventListener("click", async () => {
+    installUi.cancel.disabled = true;
+    try {
+      await api("/api/update/cancel", { method: "POST", body: "{}" });
+      installCancelRequested = true;
+      appUpdateInstall = null;
+      appUpdateStage = "cancelled";
+      renderInstallMask();
+      renderAppUpdate(appUpdateSnapshot);
+    } catch (error) {
+      appUpdateInstall = null;
+      await loadAppUpdate();
+      if (error?.code !== "install-in-flight") {
+        showToast(error?.message || String(error), true);
+      }
+    } finally {
+      installUi.cancel.disabled = false;
+    }
   });
 
   /**
@@ -4123,6 +4338,96 @@
     } catch (error) {
       status.textContent = error.message || String(error);
       submit.disabled = false;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 会话导出：列出台 TRAE 的本地会话，点条目导出为 Markdown 下载。
+  // 每次请求都要守护进程扫一遍 TRAE 进程内存拿库密钥，列表约十几秒到一分钟，
+  // 导出再花一遍，所以状态文案必须提前说清等待预期，否则看起来像没响应。
+  // ---------------------------------------------------------------------------
+
+  function closeSessionsDialog() {
+    sessionsMask.classList.remove("open");
+  }
+
+  function openSessionsDialog() {
+    sessionsUi.body.replaceChildren();
+    sessionsUi.status.style.color = "";
+    sessionsUi.status.textContent =
+      "正在读取会话：需扫描 TRAE 进程内存，约十几秒到一分钟，请稍候...";
+    sessionsMask.classList.add("open");
+    sessionsUi.close.focus();
+    api("/api/sessions")
+      .then(renderSessionRows)
+      .catch((error) => {
+        sessionsUi.status.style.color = "#ef4444";
+        sessionsUi.status.textContent = `读取失败：${error.message || String(error)}`;
+      });
+  }
+
+  function renderSessionRows(data) {
+    sessionsUi.body.replaceChildren();
+    const sessions = Array.isArray(data.sessions) ? data.sessions : [];
+    if (!sessions.length) {
+      sessionsUi.status.textContent = "当前 TRAE 没有可导出的会话";
+      return;
+    }
+    if (data.recentMessagesComplete === false) {
+      const note = document.createElement("div");
+      note.className = "te-transfer-note";
+      note.textContent = "TRAE 正在写入会话库，最新未落盘的消息可能缺失。";
+      sessionsUi.body.appendChild(note);
+    }
+    // 按项目分组：服务端已按最近活动排序，插入序即组间序（最新活动的组在前）。
+    const groups = new Map();
+    for (const session of sessions) {
+      const key = session.project || "未分组";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(session);
+    }
+    for (const [project, items] of groups) {
+      const header = document.createElement("div");
+      header.className = "te-session-group";
+      header.textContent = `${project} · ${items.length}`;
+      sessionsUi.body.appendChild(header);
+      for (const session of items) {
+        const row = document.createElement("div");
+        row.className = "te-session-row";
+        row.dataset.sessionId = session.id;
+        const name = document.createElement("span");
+        name.className = "te-transfer-option-name";
+        name.textContent = session.title || session.id;
+        name.title = name.textContent;
+        const meta = document.createElement("span");
+        meta.className = "te-transfer-option-meta";
+        meta.textContent = `${session.updatedAt || session.createdAt || ""} · ${session.turns} 轮 · 点击导出`;
+        row.append(name, meta);
+        sessionsUi.body.appendChild(row);
+      }
+    }
+    sessionsUi.status.style.color = "";
+    sessionsUi.status.textContent = `共 ${sessions.length} 个会话，点击任一条导出为 Markdown（导出约需一分钟）`;
+  }
+
+  async function exportSession(row) {
+    const sessionId = row.dataset.sessionId;
+    // 同一时间只允许一个导出：服务端本来就互斥，这里提前挡住避免用户连点后
+    // 看到两个「正在导出」互相覆盖。
+    if (!sessionId || sessionsUi.body.querySelector(".te-session-row.busy")) return;
+    const title = row.querySelector(".te-transfer-option-name")?.textContent || "会话";
+    row.classList.add("busy");
+    sessionsUi.status.style.color = "";
+    sessionsUi.status.textContent = `正在导出「${title}」...`;
+    try {
+      const result = await api(`/api/sessions/export?id=${encodeURIComponent(sessionId)}`);
+      downloadTransfer(result, "会话导出.md");
+      sessionsUi.status.textContent = `已导出「${title}」，文件已开始下载`;
+    } catch (error) {
+      sessionsUi.status.style.color = "#ef4444";
+      sessionsUi.status.textContent = `导出失败：${error.message || String(error)}`;
+    } finally {
+      row.classList.remove("busy");
     }
   }
 
@@ -4695,16 +5000,19 @@
   });
   // Choosing a mode reshapes the form at once, so the fields a mode ignores are
   // never left on screen looking editable.
-  for (const input of settingsUi.netModeInputs) {
-    input.addEventListener("change", () => {
-      // Switching away from a custom proxy drops a pending "clear credentials"
-      // request, which only ever applies to the credentials of that proxy.
-      netClearCredentials = false;
-      applyNetVisibility();
-    });
-  }
+  settingsUi.netMode.addEventListener("change", () => {
+    // Switching away from a custom proxy drops a pending "clear credentials"
+    // request, which only ever applies to the credentials of that proxy.
+    netClearCredentials = false;
+    applyNetVisibility();
+  });
   settingsUi.netScheme.addEventListener("change", () => applyNetVisibility());
   settingsUi.netHost.addEventListener("input", () => maybeSplitProxyUrl());
+  settingsUi.netPassEye.addEventListener("click", () => {
+    const hidden = settingsUi.netPass.type === "password";
+    settingsUi.netPass.type = hidden ? "text" : "password";
+    settingsUi.netPassEye.classList.toggle("active", hidden);
+  });
   updateUi.check.addEventListener("click", () => {
     checkAppUpdate().catch(() => {});
   });
@@ -4726,6 +5034,11 @@
     });
   }
   list.addEventListener("click", (event) => {
+    const sessionsButton = event.target.closest(".te-acc-sessions");
+    if (sessionsButton) {
+      openSessionsDialog();
+      return;
+    }
     const creditsButton = event.target.closest(".te-acc-credits");
     if (creditsButton?.dataset.accountId) {
       const account = accountsById.get(creditsButton.dataset.accountId);
@@ -4784,6 +5097,17 @@
   });
   deleteMask.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeDeleteDialog();
+  });
+  sessionsUi.close.addEventListener("click", closeSessionsDialog);
+  sessionsMask.addEventListener("click", (event) => {
+    if (event.target === sessionsMask) closeSessionsDialog();
+  });
+  sessionsMask.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeSessionsDialog();
+  });
+  sessionsUi.body.addEventListener("click", (event) => {
+    const row = event.target.closest(".te-session-row");
+    if (row?.dataset.sessionId) exportSession(row).catch(() => {});
   });
   switchMask.querySelector(".te-switch-cancel").addEventListener("click", () => {
     if (!switchBusy) closeSwitchDialog();

@@ -62,7 +62,7 @@ export async function cleanupInstallerDirectory(options = {}) {
  */
 export async function downloadInstaller(
   installer,
-  { directory, downloadImpl = downloadToFile, onStage, onProgress } = {},
+  { directory, downloadImpl = downloadToFile, onStage, onProgress, signal } = {},
 ) {
   const targetDirectory = directory ?? installerDirectory();
   await fs.mkdir(targetDirectory, { recursive: true });
@@ -80,15 +80,19 @@ export async function downloadInstaller(
       // the release promised, so the percentage is right even when the server sends
       // no content length at all.
       onProgress: ({ received }) => onProgress?.({ received, total: installer.size }),
+      // The user's cancel button aborts mid-flight; a cancelled error is marked as
+      // such by `downloadToFile` and must not be reworded into a transport failure.
+      signal,
     });
   } catch (error) {
     /**
      * A transport failure is two different sentences for two different readers:
      * the panel gets a short one it can act on, and the log keeps the chain that
      * names the actual cause. `message` stays untouched and `userMessage` is
-     * added, so neither reader is served the other's words.
+     * added, so neither reader is served the other's words. A user cancel keeps
+     * its own shape — rewording it would turn a decision into a network failure.
      */
-    error.userMessage = describeDownloadFailure(error);
+    if (!error?.cancelled) error.userMessage = describeDownloadFailure(error);
     throw error;
   }
   const { bytes, sha256 } = downloaded;
@@ -132,7 +136,7 @@ function describeDownloadFailure(error) {
  */
 export async function prepareInstaller(
   installer,
-  { directory, downloadImpl = downloadToFile, verifyImpl = verifyInstallerFile, onStage, onProgress } = {},
+  { directory, downloadImpl = downloadToFile, verifyImpl = verifyInstallerFile, onStage, onProgress, signal } = {},
 ) {
   const targetDirectory = directory ?? installerDirectory();
   const destination = path.join(targetDirectory, installer.name);
@@ -145,6 +149,7 @@ export async function prepareInstaller(
     downloadImpl,
     onStage,
     onProgress,
+    signal,
   });
   return { ...result, reused: false };
 }

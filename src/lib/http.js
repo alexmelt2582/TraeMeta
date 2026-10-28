@@ -94,14 +94,21 @@ export async function requestJson(
  * an observer only — nothing it does can change the download — and it is never
  * called on a path that will not end in a written file, so a caller can report
  * progress without having to tell a failure apart from a completion.
+ *
+ * `signal` lets a caller cancel mid-flight (the update-cancel button). The
+ * external signal aborts the same controller the timeout uses, so undici sees
+ * one signal no matter who pulled the trigger; the thrown error is marked
+ * `cancelled` so the caller can tell a user's decision from a transport failure.
  */
 export async function downloadToFile(
   url,
   destPath,
-  { headers = {}, timeoutMs = 300000, maxBytes = null, dispatcher, onProgress } = {},
+  { headers = {}, timeoutMs = 300000, maxBytes = null, dispatcher, onProgress, signal } = {},
 ) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const onExternalAbort = () => controller.abort();
+  signal?.addEventListener("abort", onExternalAbort, { once: true });
   const activeDispatcher = dispatcher === undefined ? getDispatcherFor(url) : dispatcher;
   const hash = createHash("sha256");
   let handle = null;
@@ -146,6 +153,12 @@ export async function downloadToFile(
     complete = true;
     return { bytes, sha256: hash.digest("hex") };
   } catch (error) {
+    if (signal?.aborted) {
+      // 外部取消不是传输失败：不带超时/网络字样，让调用方按 cancelled 分支处理。
+      const cancelled = new Error("下载已取消");
+      cancelled.cancelled = true;
+      throw cancelled;
+    }
     // A message this function already wrote is the whole story; only a transport
     // failure needs the `cause` chain, exactly as in `requestJson`.
     if (error?.selfDescribed) throw error;
@@ -158,6 +171,7 @@ export async function downloadToFile(
     if (timedOut) wrapped.timedOut = true;
     throw wrapped;
   } finally {
+    signal?.removeEventListener("abort", onExternalAbort);
     clearTimeout(timer);
     if (handle) await handle.close().catch(() => {});
     if (!complete) await fs.rm(destPath, { force: true }).catch(() => {});

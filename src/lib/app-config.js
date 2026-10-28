@@ -182,6 +182,13 @@ export const PROXY_DEFAULTS = {
   noProxy: "",
 };
 
+/**
+ * The exclusions a proxy gets when the user has not typed any: loopback names
+ * (also enforced unconditionally by the runtime) plus Windows' `<local>`
+ * wildcard, which the runtime resolves as every dotless intranet hostname.
+ */
+export const DEFAULT_NO_PROXY = "<local>,localhost,127.0.0.1,::1";
+
 function normalizeProxyText(value, field) {
   if (value === null || value === undefined) return "";
   if (typeof value !== "string" && typeof value !== "number") {
@@ -256,6 +263,11 @@ export function normalizeProxy(raw) {
     throw new Error("config.proxy.port 必须是 0-65535 之间的整数");
   }
 
+  const noProxy = normalizeNoProxy(raw.noProxy);
+  // Proxying without exclusions means the intranet leaks through the proxy by
+  // default. When a proxy is actually in use, an empty list gets the standard
+  // local defaults instead — Windows' `<local>` short-name wildcard plus the
+  // loopback names. `off` proxies nothing, so it keeps no list at all.
   return {
     mode,
     scheme,
@@ -263,7 +275,7 @@ export function normalizeProxy(raw) {
     port,
     username: normalizeProxyText(raw.username, "username"),
     password: normalizeProxySecret(raw.password),
-    noProxy: normalizeNoProxy(raw.noProxy),
+    noProxy: mode === "off" ? noProxy : noProxy || DEFAULT_NO_PROXY,
   };
 }
 
