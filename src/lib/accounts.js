@@ -139,6 +139,24 @@ export class AccountStore {
     this.dataDir = dataDir;
     this.accountsDir = path.join(dataDir, "accounts");
     this.indexPath = path.join(this.accountsDir, "index.json");
+    /**
+     * 所有对 index.json 的「读→改→写」都从这里串行过一次。
+     *
+     * 每个多账号扫查（签到、续签、额度刷新）现在对整批账号并行发起请求，各账号
+     * 完成后都会回写同一份 index；不加这条链，两个并发保存各自基于同一次读到的
+     * 旧副本做修改，后写者会把先写者的更新整个覆盖掉。
+     */
+    this.writeChain = Promise.resolve();
+  }
+
+  /** Runs `task` after every previously queued index write has settled. */
+  serializeIndexWrite(task) {
+    const run = this.writeChain.then(task);
+    this.writeChain = run.then(
+      () => {},
+      () => {},
+    );
+    return run;
   }
 
   async readIndex() {
@@ -289,11 +307,15 @@ export class AccountStore {
   }
 
   async saveSnapshot(accountId, snapshot, { now = Date.now() } = {}) {
+    return this.serializeIndexWrite(() => this.saveSnapshotLocked(accountId, snapshot, { now }));
+  }
+
+  async saveSnapshotLocked(accountId, snapshot, { now = Date.now() } = {}) {
     snapshot = sanitizeAuthSnapshotEmails(snapshot);
     validateAuthSnapshot(snapshot);
     const index = await this.readIndex();
     const position = index.accounts.findIndex((record) => record.id === accountId);
-    if (position < 0) throw new Error("Account backup was not found");
+    if (position < 0) throw new Error("账号备份不存在");
     const identity = cleanIdentity(extractIdentityFromSnapshot(snapshot));
     await writeJsonAtomic(this.snapshotPath(accountId), snapshot, { mode: 0o600 });
     index.accounts[position] = withCredentialExpiry({
@@ -314,9 +336,13 @@ export class AccountStore {
   }
 
   async saveInsights(accountId, insights, { now = Date.now() } = {}) {
+    return this.serializeIndexWrite(() => this.saveInsightsLocked(accountId, insights, { now }));
+  }
+
+  async saveInsightsLocked(accountId, insights, { now = Date.now() } = {}) {
     const index = await this.readIndex();
     const position = index.accounts.findIndex((record) => record.id === accountId);
-    if (position < 0) throw new Error("Account backup was not found");
+    if (position < 0) throw new Error("账号备份不存在");
     index.accounts[position] = {
       ...index.accounts[position],
       insights: {
@@ -329,9 +355,13 @@ export class AccountStore {
   }
 
   async saveCheckin(accountId, checkin, { now = Date.now() } = {}) {
+    return this.serializeIndexWrite(() => this.saveCheckinLocked(accountId, checkin, { now }));
+  }
+
+  async saveCheckinLocked(accountId, checkin, { now = Date.now() } = {}) {
     const index = await this.readIndex();
     const position = index.accounts.findIndex((record) => record.id === accountId);
-    if (position < 0) throw new Error("Account backup was not found");
+    if (position < 0) throw new Error("账号备份不存在");
     index.accounts[position] = {
       ...index.accounts[position],
       checkin: {
@@ -344,9 +374,13 @@ export class AccountStore {
   }
 
   async saveKeepalive(accountId, keepalive, { now = Date.now() } = {}) {
+    return this.serializeIndexWrite(() => this.saveKeepaliveLocked(accountId, keepalive, { now }));
+  }
+
+  async saveKeepaliveLocked(accountId, keepalive, { now = Date.now() } = {}) {
     const index = await this.readIndex();
     const position = index.accounts.findIndex((record) => record.id === accountId);
-    if (position < 0) throw new Error("Account backup was not found");
+    if (position < 0) throw new Error("账号备份不存在");
     index.accounts[position] = {
       ...index.accounts[position],
       keepalive: {

@@ -4,6 +4,7 @@ import { traeStorageKeys } from "./trae-storage.js";
 
 const PAY_STATUS_PATH = "/trae/api/v2/pay/ide_user_pay_status";
 const ENTITLEMENT_USAGE_PATH = "/trae/api/v2/pay/ide_user_ent_usage";
+const USAGE_DETAIL_PATH = "/trae/api/v1/pay/query_user_usage_group_by_session";
 const PRODUCT_TYPES = new Map([
   [100, "CNExpress"],
   [6, "Ultra"],
@@ -155,6 +156,58 @@ function parseCreditsUsage(usageResponse, packs) {
   };
 }
 
+/**
+ * Today's calendar day in Asia/Shanghai as `YYYY-MM-DD`.
+ *
+ * China has observed a fixed UTC+8 offset since 1991 (see formatLogTimestamp),
+ * so a constant shift is exact.
+ */
+export function shanghaiDayKey(now = Date.now()) {
+  const shifted = new Date(now + 8 * 60 * 60 * 1000);
+  const month = String(shifted.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(shifted.getUTCDate()).padStart(2, "0");
+  return `${shifted.getUTCFullYear()}-${month}-${day}`;
+}
+
+/**
+ * Estimates today's usage from period consumption deltas (fallback only).
+ *
+ * The real figure comes from `fetchTraeTodayUsage`, which sums the server's
+ * own per-session usage records for today. This delta-based estimate only
+ * runs when that API call failed: the first refresh that sees an account on
+ * a given day records `credits.used` as the baseline, and today's usage is
+ * the growth since then. A counter that *dropped* means the billing period
+ * reset mid-day, so today's usage is the whole new counter. `estimated: true`
+ * lets the UI say so instead of presenting it as an exact server figure.
+ */
+export function computeTodayUsage(previousBaseline, credits, { now = Date.now() } = {}) {
+  if (!credits || credits.unlimited || !Number.isFinite(credits.used)) {
+    return { todayUsage: null, baseline: null };
+  }
+  const day = shanghaiDayKey(now);
+  const consumed = credits.used;
+  const prev =
+    previousBaseline && previousBaseline.date === day ? previousBaseline : null;
+  if (prev && Number.isFinite(prev.consumed) && consumed >= prev.consumed) {
+    return {
+      todayUsage: {
+        date: day,
+        amount: Math.round((consumed - prev.consumed) * 100) / 100,
+        estimated: true,
+      },
+      baseline: { date: day, consumed: prev.consumed },
+    };
+  }
+  return {
+    todayUsage: {
+      date: day,
+      amount: prev && consumed < prev.consumed ? consumed : 0,
+      estimated: true,
+    },
+    baseline: { date: day, consumed },
+  };
+}
+
 function selectPack(packs) {
   for (const type of [100, 6, 5, 4, 1, 9, 8, 0]) {
     const found = packs.find((pack) => productType(pack) === type);
@@ -297,13 +350,82 @@ async function requestInsights(url, accessToken, body) {
   return response.json;
 }
 
-export async function fetchTraeAccountInsights(snapshot, { now = Date.now() } = {}) {
+/**
+ * Sums today's real credit consumption from the server's usage records.
+ *
+ * `query_user_usage_group_by_session` is the endpoint behind TRAE CN's own
+ * usage page (设置 → 用量管理). The request shape matters: `usage_type` must
+ * be the ARRAY `[7]` — the constant the official client sends — otherwise the
+ * gateway answers 400, and omitting it yields a silent empty result. Windows
+ * are epoch seconds in UTC+8, so the window starts at today's 00:00
+ * Asia/Shanghai. Pages of 20 are pulled until `total` is covered; anything
+ * short of the full set fails instead of reporting a silently small number.
+ */
+export async function fetchTraeTodayUsage(
+  context,
+  { now = Date.now(), pageSize = 20, maxPages = 50, fetchPage } = {},
+) {
+  const request = fetchPage || (({ url, accessToken, body }) => requestInsights(url, accessToken, body));
+  const shifted = new Date(now + 8 * 60 * 60 * 1000);
+  const startSeconds =
+    Math.floor(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()) / 1000) - 8 * 60 * 60;
+  const endSeconds = Math.floor(now / 1000);
+  let pageNum = 1;
+  let fetched = 0;
+  let total = null;
+  let amount = 0;
+  while (pageNum <= maxPages) {
+    const root = await request({
+      url: `${context.host}${USAGE_DETAIL_PATH}`,
+      accessToken: context.accessToken,
+      body: {
+        usage_type: [7],
+        start_time: startSeconds,
+        end_time: endSeconds,
+        page_num: pageNum,
+        page_size: pageSize,
+      },
+    });
+    // Documented wrapper is data.user_usage_group_by_sessions; the live
+    // gateway answers with the fields at the top level — accept both.
+    const payload = record(root?.data) ?? record(root);
+    const rows = array(payload?.user_usage_group_by_sessions);
+    if (total === null && Number.isFinite(payload?.total)) total = payload.total;
+    for (const row of rows) {
+      const credits = record(row)?.credits_float;
+      if (typeof credits === "number" && Number.isFinite(credits) && credits > 0) {
+        amount += credits;
+      }
+    }
+    fetched += rows.length;
+    if (total !== null && fetched >= total) {
+      return Math.round(amount * 100) / 100;
+    }
+    if (rows.length === 0) {
+      // A short page before `total` is covered: either the server lost count
+      // or total was omitted. Fail rather than report a silently small sum.
+      throw new Error(
+        total !== null
+          ? `今日用量明细不完整（${fetched}/${total}）`
+          : "今日用量明细返回为空",
+      );
+    }
+    pageNum += 1;
+  }
+  throw new Error(`今日用量明细分页超出上限（已取 ${fetched} 条）`);
+}
+
+export async function fetchTraeAccountInsights(
+  snapshot,
+  { now = Date.now(), previousInsights = null } = {},
+) {
   const context = getTraeAuthContext(snapshot);
   const results = await Promise.allSettled([
     requestInsights(`${context.host}${PAY_STATUS_PATH}`, context.accessToken, {}),
     requestInsights(`${context.host}${ENTITLEMENT_USAGE_PATH}`, context.accessToken, {
       require_usage: true,
     }),
+    fetchTraeTodayUsage(context, { now }),
   ]);
   if (results.some((result) => result.status === "rejected" && result.reason?.unauthorized)) {
     throw new TraeInsightsAuthError();
@@ -315,7 +437,25 @@ export async function fetchTraeAccountInsights(snapshot, { now = Date.now() } = 
     throw error instanceof Error ? error : new Error("Unable to load TRAE account insights");
   }
   const insights = parseTraeAccountInsights({ payStatus, usageResponse, now });
+  const estimate = computeTodayUsage(
+    previousInsights?.todayUsageBaseline,
+    insights.credits,
+    { now },
+  );
+  // The baseline is kept even when the real API succeeded, so a later API
+  // failure degrades to a delta estimate instead of losing the day entirely.
+  insights.todayUsageBaseline = estimate.baseline;
+  if (results[2].status === "fulfilled") {
+    insights.todayUsage = {
+      date: shanghaiDayKey(now),
+      amount: results[2].value,
+      estimated: false,
+    };
+  } else if (estimate.todayUsage) {
+    insights.todayUsage = estimate.todayUsage;
+  }
   const failures = results
+    .slice(0, 2)
     .filter((result) => result.status === "rejected")
     .map((result) => result.reason?.message || String(result.reason));
   if (failures.length) insights.error = failures.join(" | ");

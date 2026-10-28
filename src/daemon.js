@@ -96,6 +96,11 @@ import {
 } from "./lib/trae-process.js";
 import { TraeOAuthManager } from "./lib/trae-oauth.js";
 import {
+  exportTraeSessionMarkdown,
+  listTraeSessions,
+  prewarmTraeSessionKey,
+} from "./lib/trae-session-export.js";
+import {
   applyAuthSnapshot,
   purgeLegacyTransactionDirectory,
   rollbackAuthSnapshot,
@@ -107,6 +112,8 @@ const CDP_PORT = parsePort(process.env.TRAEMETA_ENHANCER_CDP_PORT, DEFAULT_CDP_P
 const UI_PORT = parsePort(process.env.TRAEMETA_ENHANCER_UI_PORT, DEFAULT_UI_PORT);
 const DATA_DIR = process.env.TRAEMETA_ENHANCER_DATA_DIR || DEFAULT_DATA_DIR;
 const STORAGE_PATH = process.env.TRAEMETA_ENHANCER_STORAGE_PATH || DEFAULT_STORAGE_PATH;
+/** 会话库在 user-data 根下，而 STORAGE_PATH 固定在其 User/globalStorage 层。 */
+const TRAE_USER_DATA_DIR = path.dirname(path.dirname(path.dirname(STORAGE_PATH)));
 /**
  * Resolved at startup from the configuration file and live detection. The
  * daemon must still run when TRAE is absent, because check-in and keep-alive
@@ -137,6 +144,8 @@ let loginStartInFlight = null;
 let insightsRefreshInFlight = null;
 let checkinInFlight = null;
 let keepaliveInFlight = null;
+/** 会话读取互斥：内存扫描既慢又重，并发两次只会在内存里多放一份明文库。 */
+let sessionsInFlight = null;
 /**
  * The in-app upgrade holds the same single slot as every account operation: it
  * stops this daemon by the end of it, so it must not overlap a check-in, a
@@ -155,6 +164,14 @@ let installInFlight = null;
  * hypothetical: it is exactly the "下载又弹出来一次，卡在 6%" report.
  */
 let installHandedOff = false;
+/**
+ * The cancel handle for the download currently in flight, if any.
+ *
+ * Only a download can be cancelled: verification is seconds of local sha256, and
+ * once the wizard is up it may already be replacing files. Nulled when the install
+ * attempt ends, whichever way it ends.
+ */
+let installAbort = null;
 
 /** True while an upgrade owns the slot, download and wizard alike. */
 function isInstallBusy() {
@@ -514,6 +531,8 @@ async function checkForAppUpdate({ force = false } = {}) {
 async function installAppUpdate(release, cdpClient) {
   const installer = release.installer;
   installProgressBucket = 0;
+  const abort = new AbortController();
+  installAbort = abort;
   await publishInstallState(cdpClient, {
     stage: "downloading",
     version: release.version,
@@ -542,6 +561,7 @@ async function installAppUpdate(release, cdpClient) {
         installProgressBucket = bucket;
         return notifyPanel(cdpClient, UPDATE_PROGRESS_EVENT, { ...installState });
       },
+      signal: abort.signal,
     });
     console.log(
       `[update] ${reused ? "reused the already verified" : "verified"} ${installer.name}` +
@@ -585,6 +605,19 @@ async function installAppUpdate(release, cdpClient) {
 
     return { stage: "installing", version: release.version, installer: installer.name };
   } catch (error) {
+    if (error?.cancelled) {
+      // 用户的取消不是失败：面板已从取消接口的 200 知道结果，这里把阶段发布成
+      // cancelled（进度框据此关闭），并让那次下载请求正常返回而不是 500。
+      console.log("[update] download cancelled by user");
+      await publishInstallState(cdpClient, {
+        stage: "cancelled",
+        error: null,
+        percent: null,
+        received: null,
+        total: null,
+      });
+      return { stage: "cancelled", version: release.version };
+    }
     const message = error?.message || String(error);
     /**
      * Two readers, two sentences. The log gets the full technical message — the
@@ -604,6 +637,8 @@ async function installAppUpdate(release, cdpClient) {
       total: null,
     });
     throw error;
+  } finally {
+    installAbort = null;
   }
 }
 
@@ -720,7 +755,7 @@ async function switchAccount(accountId) {
   const startedAt = Date.now();
   const elapsed = () => `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
   const account = await accountStore.findAccount(accountId);
-  if (!account) throw new Error("Account backup was not found");
+  if (!account) throw new Error("账号备份不存在");
   const label = account.displayName || account.email || account.userId || accountId;
   console.log(`[switch] 开始切换账号「${label}」`);
   let snapshot = normalizeAuthSnapshotForInjection(
@@ -795,30 +830,35 @@ async function refreshAccountsInsights(accountIds = null) {
     ? accounts.filter((account) => requested.has(account.id))
     : accounts;
   if (requested && selected.length !== requested.size) {
-    throw new Error("One or more selected account backups were not found");
+    throw new Error("所选账号备份不存在");
   }
   if (!selected.length) throw new Error("没有可刷新的账号");
 
-  const results = [];
-  for (const account of selected) {
-    try {
-      const snapshot = await accountStore.readSnapshot(account.id);
-      const refreshed = await refreshAccountInsights(snapshot);
-      if (refreshed.refreshedToken) {
-        await accountStore.saveSnapshot(account.id, refreshed.snapshot);
+  // 整批并行：每个账号独立请求、独立回写，互不依赖。index.json 的并发写由
+  // AccountStore 的写链串行化，这里不需要任何顺序保证。
+  const results = await Promise.all(
+    selected.map(async (account) => {
+      try {
+        const snapshot = await accountStore.readSnapshot(account.id);
+        const refreshed = await refreshAccountInsights(snapshot, {
+          previousInsights: account.insights,
+        });
+        if (refreshed.refreshedToken) {
+          await accountStore.saveSnapshot(account.id, refreshed.snapshot);
+        }
+        const saved = await accountStore.saveInsights(account.id, refreshed.insights);
+        return { id: account.id, ok: true, account: saved };
+      } catch (error) {
+        const message = error.message || String(error);
+        const saved = await accountStore.saveInsights(account.id, {
+          ...(account.insights || {}),
+          error: message,
+          updatedAt: new Date().toISOString(),
+        });
+        return { id: account.id, ok: false, error: message, account: saved };
       }
-      const saved = await accountStore.saveInsights(account.id, refreshed.insights);
-      results.push({ id: account.id, ok: true, account: saved });
-    } catch (error) {
-      const message = error.message || String(error);
-      const saved = await accountStore.saveInsights(account.id, {
-        ...(account.insights || {}),
-        error: message,
-        updatedAt: new Date().toISOString(),
-      });
-      results.push({ id: account.id, ok: false, error: message, account: saved });
-    }
-  }
+    }),
+  );
 
   return {
     total: results.length,
@@ -976,7 +1016,7 @@ async function runAccountCheckin(
   accountIds = null,
   { force = false, reason = "manual", allowTokenRefresh = true } = {},
 ) {
-  if (checkinInFlight) throw new Error("Account check-in is already running");
+  if (checkinInFlight) throw new Error("正在签到，请等当前签到完成");
   checkinInFlight = (async () => {
     const accounts = await accountStore.list();
     const requested = accountIds ? new Set(accountIds.map(String)) : null;
@@ -984,15 +1024,15 @@ async function runAccountCheckin(
       ? accounts.filter((account) => requested.has(account.id))
       : accounts;
     if (requested && selected.length !== requested.size) {
-      throw new Error("One or more selected account backups were not found");
+      throw new Error("所选账号备份不存在");
     }
     if (!selected.length) throw new Error("没有可签到的账号");
 
-    const results = [];
-    for (const account of selected) {
-      results.push(await checkinOneAccount(account, { force, reason, allowTokenRefresh }));
-      if (selected.length > 1) await delay(350);
-    }
+    // 整批并行：签到按账号隔离（各自的 userId 作设备标识、各自的记录回写），
+    // 排队只会把面板按「刷新/签到」后干等的时间拉长 N 倍。
+    const results = await Promise.all(
+      selected.map((account) => checkinOneAccount(account, { force, reason, allowTokenRefresh })),
+    );
     return {
       total: results.length,
       checkedIn: results.filter((result) => result.ok && !result.skipped).length,
@@ -1011,7 +1051,9 @@ async function runAccountCheckin(
 async function keepaliveOneAccount(account, { reason = "scheduled" } = {}) {
   try {
     const snapshot = await accountStore.readSnapshot(account.id);
-    const refreshed = await refreshAccountKeepalive(snapshot);
+    const refreshed = await refreshAccountKeepalive(snapshot, {
+      previousInsights: account.insights,
+    });
     await accountStore.saveSnapshot(account.id, refreshed.snapshot);
     if (refreshed.insights) {
       await accountStore.saveInsights(account.id, refreshed.insights);
@@ -1108,7 +1150,9 @@ async function keepaliveActiveAccount(
     let insights = null;
     let warning = null;
     try {
-      insights = await fetchTraeAccountInsights(snapshot);
+      insights = await fetchTraeAccountInsights(snapshot, {
+        previousInsights: account.insights,
+      });
     } catch (error) {
       warning = error.message || String(error);
     }
@@ -1164,7 +1208,7 @@ async function runAccountKeepalive(
   accountIds = null,
   { force = false, reason = "manual" } = {},
 ) {
-  if (keepaliveInFlight) throw new Error("Account keepalive is already running");
+  if (keepaliveInFlight) throw new Error("正在保活续签，请稍后再试");
   keepaliveInFlight = (async () => {
     const accounts = await accountStore.list();
     const requested = accountIds ? new Set(accountIds.map(String)) : null;
@@ -1172,7 +1216,7 @@ async function runAccountKeepalive(
       ? accounts.filter((account) => requested.has(account.id))
       : accounts;
     if (requested && selected.length !== requested.size) {
-      throw new Error("One or more selected account backups were not found");
+      throw new Error("所选账号备份不存在");
     }
     if (!selected.length) throw new Error("没有可保活的账号");
 
@@ -1211,28 +1255,26 @@ async function runAccountKeepalive(
     }
 
     const now = Date.now();
-    const results = [];
-    for (const account of selected) {
-      if (
-        !force &&
-        !isKeepaliveDue(account, {
-          now,
-          intervalMs: AUTO_KEEPALIVE_INTERVAL_MS,
-          retryIntervalMs: AUTO_KEEPALIVE_RETRY_INTERVAL_MS,
-        })
-      ) {
-        results.push({ id: account.id, ok: true, skipped: true, reason: "not_due" });
-        continue;
-      }
-      if (account.id === active.id) {
-        results.push(
-          await keepaliveActiveAccount(account, storageRoot, { reason }),
-        );
-        continue;
-      }
-      results.push(await keepaliveOneAccount(account, { reason }));
-      if (selected.length > 1) await delay(500);
-    }
+    // 到期判断是同步的，先分好类；需要处理的账号再整批并行，写回由 index 写链
+    // 串行化。活跃账号走 live storage 同步，与其余账号互不影响。
+    const results = await Promise.all(
+      selected.map((account) => {
+        if (
+          !force &&
+          !isKeepaliveDue(account, {
+            now,
+            intervalMs: AUTO_KEEPALIVE_INTERVAL_MS,
+            retryIntervalMs: AUTO_KEEPALIVE_RETRY_INTERVAL_MS,
+          })
+        ) {
+          return Promise.resolve({ id: account.id, ok: true, skipped: true, reason: "not_due" });
+        }
+        if (account.id === active.id) {
+          return keepaliveActiveAccount(account, storageRoot, { reason });
+        }
+        return keepaliveOneAccount(account, { reason });
+      }),
+    );
 
     return {
       total: selected.length,
@@ -1503,15 +1545,15 @@ async function route(request, response, apiToken, cdpClient, oauthManager) {
 
   if (request.method === "POST" && pathname === "/api/accounts/insights/refresh") {
     if (switchInFlight) {
-      jsonResponse(response, 409, { ok: false, error: "An account switch is already running" });
+      jsonResponse(response, 409, { ok: false, error: "正在切换账号，请等当前切换完成" });
       return;
     }
     if (checkinInFlight) {
-      jsonResponse(response, 409, { ok: false, error: "Account check-in is already running" });
+      jsonResponse(response, 409, { ok: false, error: "正在签到，请等当前签到完成" });
       return;
     }
     if (keepaliveInFlight) {
-      jsonResponse(response, 409, { ok: false, error: "Account keepalive is already running" });
+      jsonResponse(response, 409, { ok: false, error: "正在保活续签，请稍后再试" });
       return;
     }
     if (isInstallBusy()) {
@@ -1519,7 +1561,7 @@ async function route(request, response, apiToken, cdpClient, oauthManager) {
       return;
     }
     if (insightsRefreshInFlight) {
-      jsonResponse(response, 409, { ok: false, error: "Account insights are already refreshing" });
+      jsonResponse(response, 409, { ok: false, error: "正在刷新额度，请稍后再试" });
       return;
     }
     const body = await readRequestBody(request);
@@ -1539,15 +1581,15 @@ async function route(request, response, apiToken, cdpClient, oauthManager) {
 
   if (request.method === "POST" && pathname === "/api/checkin/run") {
     if (switchInFlight) {
-      jsonResponse(response, 409, { ok: false, error: "An account switch is already running" });
+      jsonResponse(response, 409, { ok: false, error: "正在切换账号，请等当前切换完成" });
       return;
     }
     if (checkinInFlight) {
-      jsonResponse(response, 409, { ok: false, error: "Account check-in is already running" });
+      jsonResponse(response, 409, { ok: false, error: "正在签到，请等当前签到完成" });
       return;
     }
     if (keepaliveInFlight) {
-      jsonResponse(response, 409, { ok: false, error: "Account keepalive is already running" });
+      jsonResponse(response, 409, { ok: false, error: "正在保活续签，请稍后再试" });
       return;
     }
     if (isInstallBusy()) {
@@ -1555,18 +1597,18 @@ async function route(request, response, apiToken, cdpClient, oauthManager) {
       return;
     }
     if (loginStartInFlight) {
-      jsonResponse(response, 409, { ok: false, error: "A login flow is already starting" });
+      jsonResponse(response, 409, { ok: false, error: "正在启动登录，请稍后再试" });
       return;
     }
     if (oauthManager.isActive()) {
       jsonResponse(response, 409, {
         ok: false,
-        error: "A seamless login flow is already running",
+        error: "登录流程正在进行，请先完成或取消",
       });
       return;
     }
     if (insightsRefreshInFlight) {
-      jsonResponse(response, 409, { ok: false, error: "Account insights are already refreshing" });
+      jsonResponse(response, 409, { ok: false, error: "正在刷新额度，请稍后再试" });
       return;
     }
     const body = await readRequestBody(request);
@@ -1584,30 +1626,30 @@ async function route(request, response, apiToken, cdpClient, oauthManager) {
 
   if (request.method === "POST" && pathname === "/api/accounts/keepalive/run") {
     if (switchInFlight) {
-      jsonResponse(response, 409, { ok: false, error: "An account switch is already running" });
+      jsonResponse(response, 409, { ok: false, error: "正在切换账号，请等当前切换完成" });
       return;
     }
     if (checkinInFlight) {
-      jsonResponse(response, 409, { ok: false, error: "Account check-in is already running" });
+      jsonResponse(response, 409, { ok: false, error: "正在签到，请等当前签到完成" });
       return;
     }
     if (loginStartInFlight) {
-      jsonResponse(response, 409, { ok: false, error: "A login flow is already starting" });
+      jsonResponse(response, 409, { ok: false, error: "正在启动登录，请稍后再试" });
       return;
     }
     if (oauthManager.isActive()) {
       jsonResponse(response, 409, {
         ok: false,
-        error: "A seamless login flow is already running",
+        error: "登录流程正在进行，请先完成或取消",
       });
       return;
     }
     if (insightsRefreshInFlight) {
-      jsonResponse(response, 409, { ok: false, error: "Account insights are already refreshing" });
+      jsonResponse(response, 409, { ok: false, error: "正在刷新额度，请稍后再试" });
       return;
     }
     if (keepaliveInFlight) {
-      jsonResponse(response, 409, { ok: false, error: "Account keepalive is already running" });
+      jsonResponse(response, 409, { ok: false, error: "正在保活续签，请稍后再试" });
       return;
     }
     if (isInstallBusy()) {
@@ -1620,8 +1662,8 @@ async function route(request, response, apiToken, cdpClient, oauthManager) {
         ok: false,
         error:
           cockpit.action === "skip"
-            ? "Cockpit Tools is running; keepalive was skipped to avoid token rotation conflicts"
-            : "Could not determine whether Cockpit Tools is running; keepalive was skipped because it always rotates credentials",
+            ? "Cockpit Tools 正在运行，为避免凭据互相失效已跳过保活"
+            : "无法确认 Cockpit Tools 是否在运行，保活会轮换凭据，因此已跳过",
         cockpit: {
           running: cockpit.probe.running,
           source: cockpit.probe.source,
@@ -1721,15 +1763,15 @@ async function route(request, response, apiToken, cdpClient, oauthManager) {
 
   if (request.method === "POST" && pathname === "/api/accounts/switch") {
     if (switchInFlight) {
-      jsonResponse(response, 409, { ok: false, error: "An account switch is already running" });
+      jsonResponse(response, 409, { ok: false, error: "正在切换账号，请等当前切换完成" });
       return;
     }
     if (checkinInFlight) {
-      jsonResponse(response, 409, { ok: false, error: "Account check-in is already running" });
+      jsonResponse(response, 409, { ok: false, error: "正在签到，请等当前签到完成" });
       return;
     }
     if (keepaliveInFlight) {
-      jsonResponse(response, 409, { ok: false, error: "Account keepalive is already running" });
+      jsonResponse(response, 409, { ok: false, error: "正在保活续签，请稍后再试" });
       return;
     }
     if (isInstallBusy()) {
@@ -1757,11 +1799,11 @@ async function route(request, response, apiToken, cdpClient, oauthManager) {
 
   if (request.method === "POST" && pathname === "/api/oauth/start") {
     if (checkinInFlight) {
-      jsonResponse(response, 409, { ok: false, error: "Account check-in is already running" });
+      jsonResponse(response, 409, { ok: false, error: "正在签到，请等当前签到完成" });
       return;
     }
     if (keepaliveInFlight) {
-      jsonResponse(response, 409, { ok: false, error: "Account keepalive is already running" });
+      jsonResponse(response, 409, { ok: false, error: "正在保活续签，请稍后再试" });
       return;
     }
     if (isInstallBusy()) {
@@ -1769,7 +1811,7 @@ async function route(request, response, apiToken, cdpClient, oauthManager) {
       return;
     }
     if (loginStartInFlight) {
-      jsonResponse(response, 409, { ok: false, error: "A login flow is already starting" });
+      jsonResponse(response, 409, { ok: false, error: "正在启动登录，请稍后再试" });
       return;
     }
     loginStartInFlight = oauthManager.start();
@@ -1803,6 +1845,95 @@ async function route(request, response, apiToken, cdpClient, oauthManager) {
     const body = await readRequestBody(request);
     const result = await oauthManager.reopen(String(body.loginId || ""));
     jsonResponse(response, 200, { ok: true, ...(result || { opened: false }) });
+    return;
+  }
+
+  /**
+   * 只读视图：当前这台 TRAE 的本地会话列表。
+   *
+   * 列表与导出都要先扫一次运行中客户端的内存拿库密钥（本机约 45 秒），所以两个
+   * 端点共用同一个在行标志。它们不轮换凭据、不写任何状态，因此不进账号互斥：
+   * 最坏情况只是用户恰好切了账号导致这次扫描失败，报错即可。
+   */
+  if (request.method === "GET" && pathname === "/api/sessions") {
+    if (!TRAE_EXE) {
+      jsonResponse(response, 409, { ok: false, error: "尚未找到 Trae CN，无法读取会话" });
+      return;
+    }
+    if (sessionsInFlight) {
+      jsonResponse(response, 409, {
+        ok: false,
+        code: "sessions-in-flight",
+        error: "正在读取会话，请等当前读取完成",
+      });
+      return;
+    }
+    sessionsInFlight = (async () => {
+      try {
+        return await listTraeSessions({ traeExe: TRAE_EXE, userDataDir: TRAE_USER_DATA_DIR });
+      } finally {
+        sessionsInFlight = null;
+      }
+    })();
+    try {
+      const result = await sessionsInFlight;
+      jsonResponse(response, 200, { ok: true, ...result });
+    } catch (error) {
+      console.error(`[sessions] 读取会话列表失败：${error.message || error}`);
+      jsonResponse(response, 500, {
+        ok: false,
+        code: error.code,
+        error: error.message || String(error),
+      });
+    }
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/sessions/export") {
+    const sessionId = requestUrl.searchParams.get("id") || "";
+    if (!TRAE_EXE) {
+      jsonResponse(response, 409, { ok: false, error: "尚未找到 Trae CN，无法导出会话" });
+      return;
+    }
+    if (sessionsInFlight) {
+      jsonResponse(response, 409, {
+        ok: false,
+        code: "sessions-in-flight",
+        error: "正在读取会话，请等当前读取完成",
+      });
+      return;
+    }
+    sessionsInFlight = (async () => {
+      try {
+        return await exportTraeSessionMarkdown({
+          traeExe: TRAE_EXE,
+          userDataDir: TRAE_USER_DATA_DIR,
+          sessionId,
+        });
+      } finally {
+        sessionsInFlight = null;
+      }
+    })();
+    try {
+      const result = await sessionsInFlight;
+      console.log(
+        `[sessions] 已导出会话 ${sessionId}（${result.meta.turns} 轮，${result.markdown.length} 字符）`,
+      );
+      jsonResponse(response, 200, {
+        ok: true,
+        filename: result.filename,
+        mimeType: "text/markdown",
+        content: result.markdown,
+        meta: result.meta,
+      });
+    } catch (error) {
+      console.error(`[sessions] 导出会话 ${sessionId} 失败：${error.message || error}`);
+      jsonResponse(response, error.code === "session-not-found" ? 404 : 500, {
+        ok: false,
+        code: error.code,
+        error: error.message || String(error),
+      });
+    }
     return;
   }
 
@@ -1884,6 +2015,30 @@ async function route(request, response, apiToken, cdpClient, oauthManager) {
     } finally {
       installInFlight = null;
     }
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/update/cancel") {
+    // 取消只对仍在下载的升级有效：校验是几秒的本地 sha256，取消它只会造成
+    // 「取消了却装上」的矛盾结果；向导一旦启动就可能正在替换文件，更不可取消。
+    if (installHandedOff) {
+      jsonResponse(response, 409, {
+        ok: false,
+        code: "install-in-flight",
+        error: "安装向导已启动，无法取消",
+      });
+      return;
+    }
+    if (!installInFlight || !installAbort) {
+      jsonResponse(response, 409, { ok: false, error: "当前没有进行中的下载" });
+      return;
+    }
+    if (installState.stage !== "downloading") {
+      jsonResponse(response, 409, { ok: false, error: "下载已完成，无法取消" });
+      return;
+    }
+    installAbort.abort();
+    jsonResponse(response, 200, { ok: true });
     return;
   }
 
@@ -2367,6 +2522,31 @@ async function main() {
     }
   }
 
+  /**
+   * 后台预扫会话库密钥，让「会话导出」的第一次点击就是秒开。
+   *
+   * 每次 CDP 连接（含 TRAE 重启后的重连）都强制重扫一次：重启极可能换密钥，
+   * 而 45 秒的扫描在后台跑用户无感。失败只记原因不报错——用户真去导出时，
+   * 读取路径还有一次自动重扫兜底。密钥本身绝不进日志。
+   */
+  async function prewarmSessionKey() {
+    if (!TRAE_EXE) return;
+    try {
+      const result = await prewarmTraeSessionKey({
+        traeExe: TRAE_EXE,
+        userDataDir: TRAE_USER_DATA_DIR,
+        force: true,
+      });
+      if (result.ok) {
+        console.log("[sessions] 会话库密钥已在后台预扫描");
+      } else {
+        console.warn(`[sessions] 密钥预扫描未成功（code=${result.code || "unknown"}），将在读取会话时重试`);
+      }
+    } catch (error) {
+      console.warn(`[sessions] 密钥预扫描失败：${error.message || error}`);
+    }
+  }
+
   const cdpClient = new CdpClient({
     port: CDP_PORT,
     getInjectScript: () => buildInjectScript(apiToken, seaApi),
@@ -2382,6 +2562,7 @@ async function main() {
       // client's own state handling.
       void adoptCurrentAccount();
       void runClientLoadCheckin();
+      void prewarmSessionKey();
     },
   });
 

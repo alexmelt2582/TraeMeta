@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  computeTodayUsage,
+  fetchTraeTodayUsage,
   getTraeAuthContext,
   parseTraeAccountInsights,
+  shanghaiDayKey,
 } from "../src/lib/trae-insights.js";
 
 function pack({
@@ -162,4 +165,127 @@ test("auth context exposes the account user id for per-account requests", () => 
   assert.equal(context.accessToken, "test-token");
   assert.equal(context.userId, "2504031931479881");
   assert.equal(context.host, "https://api.trae.cn");
+});
+
+test("Shanghai day key follows the Beijing calendar day", () => {
+  // 2026-10-28 12:00 +08:00 == 04:00 UTC; 2026-10-28 07:00 +08:00 stays the same day.
+  assert.equal(shanghaiDayKey(Date.UTC(2026, 9, 28, 4, 0, 0)), "2026-10-28");
+  assert.equal(shanghaiDayKey(Date.UTC(2026, 9, 27, 16, 0, 0)), "2026-10-28");
+  assert.equal(shanghaiDayKey(Date.UTC(2026, 9, 27, 15, 59, 0)), "2026-10-27");
+});
+
+test("today usage grows from the same-day baseline", () => {
+  const now = Date.UTC(2026, 9, 28, 4, 0, 0);
+  const { todayUsage, baseline } = computeTodayUsage(
+    { date: "2026-10-28", consumed: 100 },
+    { used: 150 },
+    { now },
+  );
+  assert.deepEqual(todayUsage, { date: "2026-10-28", amount: 50, estimated: true });
+  assert.deepEqual(baseline, { date: "2026-10-28", consumed: 100 });
+});
+
+test("today usage restarts with a fresh baseline on a new day", () => {
+  const now = Date.UTC(2026, 9, 28, 4, 0, 0);
+  const first = computeTodayUsage(
+    { date: "2026-10-27", consumed: 3000 },
+    { used: 3100 },
+    { now },
+  );
+  assert.equal(first.todayUsage.amount, 0);
+  assert.deepEqual(first.baseline, { date: "2026-10-28", consumed: 3100 });
+  const later = computeTodayUsage(first.baseline, { used: 3120.5 }, { now });
+  assert.equal(later.todayUsage.amount, 20.5);
+});
+
+test("a dropping period counter means the billing period reset today", () => {
+  const now = Date.UTC(2026, 9, 28, 4, 0, 0);
+  const { todayUsage, baseline } = computeTodayUsage(
+    { date: "2026-10-28", consumed: 3600 },
+    { used: 42 },
+    { now },
+  );
+  assert.equal(todayUsage.amount, 42);
+  assert.deepEqual(baseline, { date: "2026-10-28", consumed: 42 });
+});
+
+test("today usage is unavailable without a finite period counter", () => {
+  const now = Date.UTC(2026, 9, 28, 4, 0, 0);
+  assert.deepEqual(computeTodayUsage(null, null, { now }), {
+    todayUsage: null,
+    baseline: null,
+  });
+  assert.deepEqual(computeTodayUsage(null, { unlimited: true, used: -1 }, { now }), {
+    todayUsage: null,
+    baseline: null,
+  });
+});
+
+const USAGE_CONTEXT = { host: "https://api.trae.cn", accessToken: "jwt-token" };
+const usageRow = (credits) => ({ credits_float: credits, model_name: "GLM-5.3-Flash" });
+
+test("today usage sums the server's paged usage records", async () => {
+  const now = Date.UTC(2026, 9, 28, 4, 0, 0);
+  const pages = [
+    { total: 3, user_usage_group_by_sessions: [usageRow(1.9), usageRow(2.5)] },
+    { total: 3, user_usage_group_by_sessions: [usageRow(2.74)] },
+  ];
+  const calls = [];
+  const amount = await fetchTraeTodayUsage(USAGE_CONTEXT, {
+    now,
+    fetchPage: async ({ url, accessToken, body }) => {
+      calls.push({ url, accessToken, body });
+      return pages[calls.length - 1];
+    },
+  });
+  assert.equal(amount, 7.14);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].url, "https://api.trae.cn/trae/api/v1/pay/query_user_usage_group_by_session");
+  assert.equal(calls[0].accessToken, "jwt-token");
+  assert.deepEqual(calls[0].body.usage_type, [7]);
+  assert.equal(calls[0].body.start_time, Date.UTC(2026, 9, 27, 16, 0, 0) / 1000);
+  assert.equal(calls[0].body.end_time, now / 1000);
+  assert.deepEqual(calls[1].body, { ...calls[0].body, page_num: 2 });
+});
+
+test("today usage tolerates the data-wrapped response and an empty day", async () => {
+  const now = Date.UTC(2026, 9, 28, 4, 0, 0);
+  const wrapped = await fetchTraeTodayUsage(USAGE_CONTEXT, {
+    now,
+    fetchPage: async () => ({
+      data: { total: 1, user_usage_group_by_sessions: [usageRow(1.5)] },
+    }),
+  });
+  assert.equal(wrapped, 1.5);
+  const empty = await fetchTraeTodayUsage(USAGE_CONTEXT, {
+    now,
+    fetchPage: async () => ({ total: 0, user_usage_group_by_sessions: [] }),
+  });
+  assert.equal(empty, 0);
+});
+
+test("today usage fails closed on an incomplete or oversized listing", async () => {
+  const now = Date.UTC(2026, 9, 28, 4, 0, 0);
+  let callsTotal3 = 0;
+  await assert.rejects(
+    fetchTraeTodayUsage(USAGE_CONTEXT, {
+      now,
+      fetchPage: async () =>
+        callsTotal3++ === 0
+          ? { total: 3, user_usage_group_by_sessions: [usageRow(1)] }
+          : { total: 3, user_usage_group_by_sessions: [] },
+    }),
+    /今日用量明细不完整（1\/3）/,
+  );
+  await assert.rejects(
+    fetchTraeTodayUsage(USAGE_CONTEXT, {
+      now,
+      maxPages: 2,
+      fetchPage: async () => ({
+        total: 99,
+        user_usage_group_by_sessions: Array.from({ length: 20 }, () => usageRow(1)),
+      }),
+    }),
+    /今日用量明细分页超出上限/,
+  );
 });

@@ -40,10 +40,12 @@ let state = {
 /**
  * Whether a host is exempt from the proxy.
  *
- * Entries may be a bare host, a domain suffix (`corp.example.com`) or the
- * wildcard form (`*.corp.example.com`). Ports are not part of an entry: this
- * project only ever talks to 443, and matching one port while missing another
- * would be a worse failure than matching the host as a whole.
+ * Entries may be a bare host, a domain suffix (`corp.example.com`), the
+ * wildcard form (`*.corp.example.com`), or Windows' `<local>` token — every
+ * single-label name without a dot, the intranet short-name convention. Ports
+ * are not part of an entry: this project only ever talks to 443, and matching
+ * one port while missing another would be a worse failure than matching the
+ * host as a whole.
  */
 export function isExcluded(url, noProxy) {
   if (!Array.isArray(noProxy) || noProxy.length === 0) return false;
@@ -56,6 +58,10 @@ export function isExcluded(url, noProxy) {
   for (const raw of noProxy) {
     const entry = String(raw ?? "").trim().toLowerCase();
     if (!entry) continue;
+    if (entry === "<local>") {
+      if (!hostname.includes(".")) return true;
+      continue;
+    }
     const bare = entry.replace(/^[*.]+/, "");
     if (!bare) continue;
     if (hostname === bare || hostname.endsWith(`.${bare}`)) return true;

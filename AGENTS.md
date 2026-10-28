@@ -104,6 +104,10 @@ TRAE 自身文件它唯一允许写入的是用户级 `User/settings.json`，
   时重试可能会接管用户手动移除的账号。
 - Keep-alive 每 30 分钟扫查一次。非活跃账号每六小时处理一次，失败后 30 分钟重试；
   凭据仅在到期时交换，因此多数扫查只是刷新洞察。
+- 面板「今日用量」的真实数据源是 `POST /trae/api/v1/pay/query_user_usage_group_by_session`
+  （TRAE CN 设置内「用量管理」页同源）。请求体 `usage_type` 必须是数组 `[7]`：
+  传数字会被 400 拒绝，省略则返回静默空结果——两者都曾造成「CN 无今日数据源」的
+  误判。分页取不满 `total` 时按失败处理并降级为本机差额估算，绝不显示偏小的部分合计。
 - 面板显示每个账号的凭据到期时间，来源是 `keepalive.accessExpiresAt`
   和 `keepalive.refreshExpiresAt`。这两个字段是携带在 keep-alive 载荷内的显示元数据
   ——它们不增加索引模式。

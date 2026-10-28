@@ -10,6 +10,7 @@ import {
   CHECKIN_INTERVALS,
   CONFIG_FILE_NAME,
   CREDIT_REMINDER_DAYS,
+  DEFAULT_NO_PROXY,
   PROXY_DEFAULTS,
   configPath,
   loadAppConfig,
@@ -263,6 +264,7 @@ test("a custom proxy requires an address and an in-range port", () => {
     mode: "custom",
     host: "127.0.0.1",
     port: 7890,
+    noProxy: DEFAULT_NO_PROXY,
   });
 });
 
@@ -273,7 +275,28 @@ test("a non-custom mode may keep an empty port", () => {
   assert.deepEqual(normalizeProxy({ mode: "system", port: "" }), {
     ...PROXY_DEFAULTS,
     mode: "system",
+    noProxy: DEFAULT_NO_PROXY,
   });
+});
+
+test("an active proxy with no exclusions gets the standard local defaults", () => {
+  // `<local>` covers Windows' dotless intranet names; the loopback names are
+  // also enforced unconditionally by the runtime, so listing them is for show.
+  assert.equal(
+    normalizeProxy({ mode: "system", port: "", noProxy: "  " }).noProxy,
+    "<local>,localhost,127.0.0.1,::1",
+  );
+  assert.equal(
+    normalizeProxy({ mode: "custom", host: "127.0.0.1", port: 7890, noProxy: "" }).noProxy,
+    "<local>,localhost,127.0.0.1,::1",
+  );
+  // `off` proxies nothing, so it keeps no list at all.
+  assert.equal(normalizeProxy({ mode: "off", noProxy: "" }).noProxy, "");
+  // An explicit list always wins.
+  assert.equal(
+    normalizeProxy({ mode: "system", port: "", noProxy: "corp.example.com" }).noProxy,
+    "corp.example.com",
+  );
 });
 
 test("proxy credentials survive a round trip and the password keeps its spaces", () => {
@@ -349,7 +372,13 @@ test("saving a proxy block keeps the other settings", async () => {
     const saved = await saveAppConfig(dir, {
       proxy: { mode: "custom", host: "127.0.0.1", port: 7890 },
     });
-    assert.deepEqual(saved.proxy, { ...PROXY_DEFAULTS, mode: "custom", host: "127.0.0.1", port: 7890 });
+    assert.deepEqual(saved.proxy, {
+      ...PROXY_DEFAULTS,
+      mode: "custom",
+      host: "127.0.0.1",
+      port: 7890,
+      noProxy: DEFAULT_NO_PROXY,
+    });
     assert.deepEqual(saved.checkin, { ...CHECKIN_DEFAULTS, auto: false });
     // A rejected value must leave the file exactly as it was.
     await assert.rejects(() => saveAppConfig(dir, { proxy: { mode: "custom" } }), /地址/);
