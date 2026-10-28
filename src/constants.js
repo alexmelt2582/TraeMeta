@@ -3,7 +3,7 @@ import path from "node:path";
 import { APP_ROOT } from "./lib/app-paths.js";
 
 export const APP_NAME = "Trae Meta";
-export const APP_VERSION = "2.0.5";
+export const APP_VERSION = "2.0.6";
 export const PROJECT_ROOT = APP_ROOT;
 
 /**
